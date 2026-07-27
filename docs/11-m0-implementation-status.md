@@ -2,7 +2,7 @@
 
 > 基线日期：2026-07-24  
 > 适用范围：P0 / M0 基础组件  
-> 结论：Line、Bar、Kuikly DSL、点击选择与基础 Tooltip、Android/H5 共用 Showcase、算法测试、Android Debug APK 和 H5 production 站点已落地。Tracker、平移/缩放、K 线/成交量和真实股票 Demo 仍属于 M1–M3，未宣称完成。
+> 结论：Line、Bar、Kuikly DSL、点击选择与基础 Tooltip、Android/H5 共用 Showcase、算法测试、Android Debug APK 和 H5 production 站点已落地。折线长按 Tracker 与水平平移已作为默认关闭的实验性 API 完成 Android/JS 编译与纯逻辑测试；正式平台手势验收、其他候选能力、完整证据包和任何业务接入均不属于 M0，也未宣称完成。
 
 ## 1. M0 范围冻结
 
@@ -16,9 +16,10 @@ M0 对应需求文档中的 FR-01、FR-02、FR-03，以及点击选择和基础 
 
 以下能力不在 M0 完成声明内：
 
-- M1：长按/滑动 Tracker、十字光标生命周期、横向平移和缩放；
-- M2：K 线、成交量组合、视口和动态行情恢复；
-- M3：完整 API/视觉证据包及 Kuikly AI 股票行情 Demo 的真实接入。
+- 实验性追踪：折线 `tooltip.trackerEnabled` 与 `onTrackerChanged`；
+- 候选交互：横向平移和缩放；
+- 候选图表：面积、饼环、组合图和 Sparkline；
+- 后续交付：完整 API/视觉证据包及经单独确认的业务接入。
 
 ## 2. 已实现功能
 
@@ -27,6 +28,7 @@ M0 对应需求文档中的 FR-01、FR-02、FR-03，以及点击选择和基础 
 | 公共数据与主题 | `chart/ChartModels.kt` | `ChartPoint`、`BarEntry`、`ChartSeries<T>`、`ChartSelection<T>`、4 套主题和各 DSL options。 |
 | 确定性刻度与布局 | `chart/ChartLayout.kt` | 空/单值/等值/跨零/非法值安全域、nice ticks、Line/Bar 坐标映射和命中结构。 |
 | 折线组件 | `chart/ChartComponents.kt` | `ComposeView<LineChartAttr, LineChartEvent>`；多系列、折线/平滑曲线、坏点断线、图例、点击选点、选择引导线和 Tooltip。 |
+| 实验性 Tracker / Pan | `chart/ChartComponents.kt`、`chart/ChartLayout.kt` | 默认关闭的 `longPress` 追踪与窗口平移；前者按最近渲染 X 槽聚合同槽多系列点，后者以原始索引范围回调 `ChartViewport`。 |
 | 柱状组件 | `chart/ChartComponents.kt` | `ComposeView<BarChartAttr, BarChartEvent>`；多系列并列绘制、正负柱、零基线、值标签、点击命中和 Tooltip；`SINGLE` 模式拒绝多系列以避免静默丢数据。 |
 | 官方风格 DSL | `chart/ChartComponents.kt` | `ViewContainer<*, *>.LineChart/BarChart` + `attr {}` + `event {}`；非法 tick、线宽、柱宽比例等通过 `require` 给出字段级错误。 |
 | Android/H5 共用页 | `ChartShowcasePage.kt` | 页面名 `chart_showcase`；双 Canvas、浅/深主题、折线和柱状点击结果区。 |
@@ -41,7 +43,7 @@ LineChart {
     attr {
         data(
             ChartSeries(
-                name = "收盘价",
+                name = "访问量",
                 items = listOf(
                     ChartPoint(1f, 12.4f, "周一"),
                     ChartPoint(2f, 13.1f, "周二"),
@@ -66,7 +68,7 @@ BarChart {
     attr {
         data(
             ChartSeries(
-                name = "成交量",
+                name = "转化",
                 items = listOf(
                     BarEntry("周一", 120f),
                     BarEntry("周二", -36f),
@@ -188,12 +190,12 @@ classpath("com.android.tools:r8:8.6.17")
 - [官方 Web Render h5 构建](https://github.com/Tencent-TDS/KuiklyUI/blob/main/core-render-web/h5/build.gradle.kts)
 - [官方 h5App 入口](https://github.com/Tencent-TDS/KuiklyUI/blob/main/h5App/src/jsMain/kotlin/Main.kt)
 
-## 7. 进入 M1 的条件
+## 7. 候选扩展前的条件
 
-M1 开始前必须保持以下基线持续为绿：
+任何候选交互或扩展图表开始前，必须保持以下基线持续为绿：
 
 - `LineChart` / `BarChart` DSL 不破坏；
 - 点击选择的原始索引与数据项语义不改变；
 - Android 模块编译、commonTest、JS 编译和 H5 production 构建持续通过；
-- Tracker 手势先完成 Android/H5 能力探针，再公开 API；
+- 实验性 Tracker/Pan 先完成 Android/iOS/OpenHarmony 的真机能力探针和手势验收，才可提升为稳定 API；
 - 平移/缩放必须定义与外层滚动的手势仲裁，不以平台私有回调污染 `commonMain`。
