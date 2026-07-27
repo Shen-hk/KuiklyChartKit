@@ -1,39 +1,36 @@
 # 调研依据与技术结论
 
-本文件记录金融行情图表方案的证据、现有工程事实与待验证约束。调研与计划更新时间：2026-07-24。
-
-## 已知工程事实
-
-- `chartkit` 已配置 Kotlin Multiplatform 的 Android、JS(IR) 和 iOS 目标；本轮验收重点改为 **Android 与 H5**。
-- `settings.gradle.kts` 已声明 `:h5App`，但当前工作区没有对应宿主目录。仅有 JS 编译目标不等于 H5 可运行示例；交付前必须补齐实际页面、构建产物部署和浏览器验证。
-- 当前 Kuikly 版本为 `2.7.0-2.1.21`。所有依赖手势或 Canvas 扩展的功能必须在该版本、Android 与 H5 中实测。
-- 现有实现已有折线和柱状图基础代码。本文档中的 K 线、成交量、缩放和行情 Demo 是后续计划，不应被描述为已完成。
+本文件记录图表组件方案的证据与约束，避免把“看起来不错”的想法误当成 Kuikly 已验证能力。调研日期：2026-07-27。
 
 ## 官方 Kuikly 结论
 
-1. [ComposeView 文档](https://kuikly.tds.qq.com/DevGuide/compose-view.html) 将可复用组件定义为 `ComposeView<Attr, Event>`：`body()` 组装 UI，`Attr` 暴露配置，`Event` 暴露回调；对外通过 `ViewContainer` 扩展函数 `addChild` 提供 DSL。因此图表入口采用 `LineChart { attr { } event { } }` 形态。
-2. [Canvas API](https://github.com/Tencent-TDS/KuiklyUI/blob/main/docs/API/components/canvas.md) 覆盖路径、虚线、文本测量、裁剪与变换，足以承载折线、柱、K 线实体/影线、成交量柱、十字线和 Tooltip 的绘制基础。
-3. 官方基础事件包含 `click`、`longPress(start/move/end)` 和 `pan`。它们可用于滑动选点和横向拖动，但缩放的事件形态、H5 行为及与外层滚动的冲突仍需探针确认。
-4. `CanvasContext.batchDraw` 适合高密度行情数据，但只能在当前依赖编译、Android 与 H5 都表现正确后启用；否则使用布局缓存和像素桶采样回退。
-5. 不将导出图片作为本轮依赖。`toImage` 及其版本要求应另立能力验证，不能阻塞行情组件和 Demo 接入。
+1. [ComposeView 文档](https://kuikly.tds.qq.com/DevGuide/compose-view.html) 将可复用组件定义为 `ComposeView<Attr, Event>`：`body()` 组装 UI，`Attr` 暴露配置，`Event` 暴露回调；对外通过 `ViewContainer` 扩展函数 `addChild` 提供 DSL。因此公开入口采用 `LineChart { attr { } event { } }`，而非另起一套 DSL。
+2. [Canvas API](https://github.com/Tencent-TDS/KuiklyUI/blob/main/docs/API/components/canvas.md) 覆盖路径、贝塞尔曲线、弧、虚线、线性渐变、文本测量、裁剪和变换，足以在 `commonMain` 实现折线、柱、面积、饼环和 Tooltip；径向渐变是 iOS 实验性能力，首版不依赖它。
+3. 官方基础事件支持 `click`、`longPress(start/move/end)` 和 `pan`。长按追踪与水平平移是可验证的候选交互方向，但只有通过当前版本的能力探针后才能成为承诺能力。
+4. 官方 Canvas 源码提供 `batchDraw` 命令批量发送机制；高密度数据渲染先确认当前依赖版本可用，再启用。当前工程固定 Kuikly `2.7.0-2.1.21`，不能直接承诺使用较新版本的 API。
+5. 基础 `toImage` 能力在官方文档中标注为 Android/iOS/OpenHarmony 的 Kuikly `2.17+` 能力。图表导出图片是可选增强项，必须先完成升级兼容性验证，不能作为 P0 依赖。
 
-## 金融行情设计结论
+## 官方组件范例的可借鉴点
 
-- 所有行情数据以不可变快照输入。K 线的稳定身份为 `timestamp`（或显式 `id`），数据更新后的选中态与视口以稳定身份恢复，不能只依赖会变化的数组下标。
-- K 线实体表示 `open` 到 `close`，影线表示 `low` 到 `high`；成交量与价格共用 X 轴和可视时间窗口，但使用独立 Y 轴与绘制区域。
-- 十字光标按最近可见 X 槽吸附；Tooltip 同时给出时间、OHLC、涨跌和成交量。缺失成交量仅隐藏成交量值，不得影响价格图。
-- 视口以数据区间和缩放比例表示。平移与缩放只改变可视窗口，不改变调用方传入的数据列表；回调返回的是可恢复的视口状态。
+[KuiklyChatUI](https://github.com/Kuikly-contrib/KuiklyChatUI) 是官方 Issue 给出的工程范例。其公开做法值得继承：
+
+- 顶层 `ViewContainer` 扩展函数加 Config/DSL，调用方无需接触内部渲染细节；
+- 主题有完整默认值，且支持集中替换；
+- 扩展点有清晰优先级（调用方 Slot/Formatter > 可替换工厂 > 内置默认实现）。
+
+ChartKit 将采用同一理念：`ValueFormatter`、`AxisFormatter`、`TooltipRenderer` 和 `SeriesRenderer` 可替换；显式配置优先于 `ChartTheme`，主题优先于内置默认值。
+
+## 公开竞争对标
+
+Issue 评论中，`Lfan-ke` 已于 2026-07-08 提交 [KuiklyChartView](https://github.com/Lfan-ke/KuiklyChartView)。其 README 宣称 22 种图表、4 套主题、点击 Tooltip、动画和多端适配；公开源码将这些图表集中在一个约 144 KB 的 `ChartView.kt` 中，仓库文件清单未见图表测试目录。此处仅用于识别公开基线，不复用其代码或视觉资产。
+
+我们的取胜策略不是短期堆叠图表数量，而是交付稳定的 P0、统一内核、可验证交互、密集数据策略、完整测试和跨端证据。候选行业能力只能作为架构扩展性参考，不能改变通用组件库的产品目标。
 
 ## 仍需完成的能力探针
 
 | 探针 | 通过标准 | 失败时的处理 |
 | --- | --- | --- |
-| Android `longPress` / `pan` | 坐标、状态和取消事件可稳定驱动滑动选点与平移。 | 保留点击选择；明确禁用未可用手势。 |
-| H5 长按、拖动与页面滚动 | 鼠标/触屏均可选点；图表手势不吞掉外层页面滚动。 | 提供点击/鼠标悬停降级，并记录限制。 |
-| Android/H5 缩放 | 缩放中心、最小/最大范围、平移边界和重绘一致。 | 隐藏 `enableZoom`，只交付平移。 |
-| K 线 + 成交量高密度渲染 | 视口移动、十字光标和 Tooltip 均映射到同一根 K 线。 | 先限制示例数据量并启用采样，不改变原始索引。 |
-| JS 产物与 H5 宿主 | 从干净环境构建后可在浏览器加载 Chart Showcase。 | H5 不可标记为已交付，先修复宿主与部署链路。 |
-
-## 公开对标的边界
-
-对标只用于识别公开基线，不复用任何第三方仓库代码、名称、截图或视觉资产。本轮差异不以图表数量取胜，而以金融行情的准确性、可操作的十字光标/视口、K 线成交量组合、Android/H5 证据、数据更新测试和真实股票行情 Demo 接入取胜。
+| `longPress` 与 `pan` 在当前依赖中编译且三端回调一致 | 当前已确认 Android/JS 可编译；三端均收到准确坐标与状态。 | Tracker/平移保持实验性；降级为点击 Tooltip，并评估最小安全升级。 |
+| `CanvasContext.batchDraw` 在当前依赖可用 | 大数据页面无逐命令跨端瓶颈。 | 使用布局/标签缓存与采样；不引用不可用 API。 |
+| Canvas 文本测量 | 中英文和数字标签宽度可预测。 | 以实际 `measureText` 为唯一布局依据。 |
+| `toImage` | 升级后 Android/iOS/OpenHarmony 均成功导出。 | 放在 P2，不影响核心发布。 |

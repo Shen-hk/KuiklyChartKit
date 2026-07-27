@@ -1,121 +1,170 @@
 # 接入与示例
 
-## Showcase：以股票行情为主线
+## Showcase 而非零散测试页
 
-组件位于 `chartkit`，Android 入口位于 `androidApp`。本轮必须新增可运行的 H5 宿主并复用同一份 `commonMain` 图表 DSL；不维护 Android 与 H5 两套业务图表代码。
+组件位于 `chartkit`，Android、iOS、OpenHarmony 宿主分别位于 `androidApp`、`iosApp`、`ohosApp`。所有正式 Demo 页面均放在 `chartkit/src/commonMain`，确保多端运行同一份图表 DSL。H5 Showcase 可复用该页面用于工程验证，但不改变正式支持范围。
 
-完整路线的 `Chart Showcase` 至少包含以下页面。当前 M0 已交付第 2 项中的折线/柱状与主题、点击 Tooltip；其余页面分别随 M1–M3 落地：
+最终提供一个 `Chart Showcase` 入口，至少包含：
 
-1. **行情概览**：股票名称、最新价、涨跌信息、带十字光标的价格折线和成交量柱。
-2. **趋势与比较**：折线与柱状图，展示声明式主题、格式化器和基础 Tooltip。
-3. **K 线详情**：OHLC K 线与成交量组合，支持时间槽 Tracker、平移和缩放。
-4. **实时更新**：模拟新增、修正、截断和替换行情快照，展示选中态与视口恢复策略。
-5. **边界实验室**：空数据、单根 K 线、重复时间、非法 OHLC、极值、长标签和密集数据。
-6. **性能与交互**：记录可视点数、采样状态、首帧/更新时间，以及 Android/H5 的实际手势表现。
+1. **Overview Dashboard**：亮/暗主题、KPI 趋势、环比柱图与 Sparkline；体现产品级布局。
+2. **Data Explorer**：多系列平滑折线、点击 Tooltip、标签格式化与密集数据策略。
+3. **Comparison Lab**：单组、分组、堆叠、正负值柱图，以及可点击图例。
+4. **Chart Gallery**：面积、饼环、组合图，以统一主题与格式化器展示扩展性。
+5. **Live Update**：模拟新增、替换和异常数据，验证重绘、动画与选中态清理。
+6. **Performance Lab**：100、1,000、5,000 点切换，展示点数、采样状态和测量结果。
 
-## 折线接入示例
+## 折线图示例
+
+下列代码是目标 API 形态；实现后必须编译运行并与 KDoc 一致。
 
 ```kotlin
 LineChart {
     attr {
-        data(ChartSeries("收盘价", dailyPoints, Color(0xFF2F80ED)))
+        data(ChartSeries("访问量", listOf(
+            ChartPoint(1.0, 120.0, "周一"),
+            ChartPoint(2.0, 168.0, "周二"),
+            ChartPoint(3.0, 142.0, "周三"),
+        ), Color(0xFF2F80ED)))
         xAxis { labelFormatter { point, _ -> point.label.orEmpty() } }
-        yAxis { tickCount = 5; includeZero = false }
-        line { smooth = false; showPoints = false }
-        tooltip { mode = TooltipMode.TRACKER }
-        interaction { enableTracker = true; enablePan = true; enableZoom = true }
+        yAxis { tickCount = 4; includeZero = false }
+        line { smooth = true; showPoints = true }
+        tooltip { enabled = true }
     }
-    event {
-        onTrackerChanged { tracker -> quotePanel.render(tracker) }
-        onViewportChanged { viewport -> quoteStore.saveViewport(viewport) }
-    }
+    event { onItemSelected { selection -> println(selection.item) } }
 }
 ```
 
-## K 线与成交量接入示例
+## 柱状图示例
 
 ```kotlin
-KLineChart {
+BarChart {
     attr {
-        data(kLineEntries)
-        kLine {
-            upColor = Color(0xFFEB5757)
-            downColor = Color(0xFF27AE60)
-            showLastPrice = true
-        }
-        volume { visible = true; heightRatio = 0.24f; colorByPriceDirection = true }
-        tooltip { mode = TooltipMode.TRACKER; keepOnRelease = false }
-        interaction {
-            enableTracker = true
-            enablePan = true
-            enableZoom = true
-            minZoom = 1f
-            maxZoom = 8f
-        }
+        data(ChartSeries("转化", listOf(
+            BarEntry(86.0, "A"), BarEntry(132.0, "B"), BarEntry(109.0, "C")
+        ), Color(0xFF27AE60)))
+        yAxis { includeZero = true; tickCount = 5 }
+        bars { mode = BarMode.GROUPED; showValueLabels = true }
     }
-    event { onTrackerChanged { tracker -> quotePanel.render(tracker) } }
+    event { onItemSelected { selection -> onBarChosen(selection.item) } }
 }
 ```
 
-示例中的数据由业务层转换为不可变 `ChartPoint` 或 `KLineEntry` 列表；网络加载、空/错误/重试 UI 和价格格式本地化应留在业务层。代码片段在实现完成前是目标形态，落地后必须纳入编译测试。
+## 面积图示例
 
-## Android 与 H5 运行要求
+`AreaChart` 是 P1 首批扩展，使用与折线图相同的数据、Tooltip 和事件协议，并默认将零纳入 Y 轴范围。
 
-Android 的 P0 页面为 `chart_showcase`，`RouterPage` 已提供跳转入口。模块级验证命令为：
-
-```powershell
-.\gradlew :chartkit:compileDebugKotlinAndroid
-.\gradlew :chartkit:testDebugUnitTest
+```kotlin
+AreaChart {
+    attr {
+        data(
+            ChartSeries(
+                name = "成交金额",
+                items = listOf(
+                    ChartPoint(1f, 82f, "周一"),
+                    ChartPoint(2f, 108f, "周二"),
+                    ChartPoint(3f, 142f, "周三"),
+                ),
+            ),
+        )
+        line { smooth = true; showPoints = false }
+        area { fillColors = listOf(Color(0x332563EB)) }
+        tooltip { trackerEnabled = true }
+    }
+    event { onItemSelected { selection -> onAmountSelected(selection.item) } }
+}
 ```
 
-完整 Android APK 已通过下列命令构建：
+## 饼环图示例
 
-```powershell
-.\gradlew :androidApp:assembleDebug
+`PieChart` 不提供坐标轴配置。`innerRadiusRatio=0` 时渲染饼图，大于零时渲染环图；点击回调保留过滤前的原始数据索引。
+
+```kotlin
+PieChart {
+    attr {
+        seriesName = "渠道订单"
+        data(
+            PieEntry("推荐", 420f),
+            PieEntry("搜索", 260f),
+            PieEntry("直播", 190f),
+            PieEntry("其他", 130f),
+        )
+        pie {
+            innerRadiusRatio = 0.58f
+            startAngleDegrees = -90f
+            gapAngleDegrees = 2f
+            centerLabel = "订单总量"
+        }
+        tooltip { valueFormatter = { value -> "${value.toInt()} 单" } }
+    }
+    event { onItemSelected { selection -> onChannelSelected(selection.item) } }
+}
 ```
 
-产物为 `androidApp/build/outputs/apk/debug/androidApp-debug.apk`。项目保留官方 Kuikly 使用的 AGP 7.4.2，并在根构建脚本覆盖 D8/R8 为 Google 对 Kotlin 2.1 要求的 8.6.17，解决旧 D8 的 Kotlin metadata 解析失败；依据和哈希见 [11-M0 实现与验收记录](11-m0-implementation-status.md)。
+## 组合图示例
 
-H5 宿主位于 `h5App`，使用官方 `KuiklyRenderViewDelegator`。下列单一任务会先构建 `chartkit` 的 `nativevue2.js`，将业务包和资源嵌入宿主，再生成 production 站点：
+`MixedChart` 使用同一个分类槽和 Y 轴绘制柱系列与线系列。两类数据都使用 `ChartSeries<BarEntry>`，选择回调通过 `seriesType` 区分渲染来源。
 
-```powershell
-.\gradlew :h5App:publishChartShowcase
+```kotlin
+MixedChart {
+    attr {
+        barData(
+            ChartSeries(
+                "实际收入",
+                listOf(BarEntry("周一", 86f), BarEntry("周二", 112f)),
+            ),
+        )
+        lineData(
+            ChartSeries(
+                "目标收入",
+                listOf(BarEntry("周一", 96f), BarEntry("周二", 105f)),
+            ),
+        )
+        bars { showValueLabels = false }
+        line { smooth = true; showPoints = true }
+        tooltip { valueFormatter = { value -> "¥${value.toInt()}K" } }
+    }
+    event {
+        onItemSelected { selection ->
+            when (selection.seriesType) {
+                MixedSeriesType.BAR -> onActualSelected(selection.item)
+                MixedSeriesType.LINE -> onTargetSelected(selection.item)
+            }
+        }
+    }
+}
 ```
 
-产物目录：
+## Sparkline 示例
 
-```text
-h5App/build/dist/js/productionExecutable/
-├── index.html
-├── h5App.js
-├── page/nativevue2.js
-└── assets/
+`SparklineChart` 复用折线数据和事件类型，但默认是单系列、无轴、无网格、无图例且不可点击的紧凑趋势。
+
+```kotlin
+SparklineChart {
+    attr {
+        data(
+            ChartSeries(
+                "支付成功率",
+                listOf(
+                    ChartPoint(1f, 96.8f, "周一"),
+                    ChartPoint(2f, 97.1f, "周二"),
+                    ChartPoint(3f, 98.6f, "今天"),
+                ),
+            ),
+        )
+        selectable = true
+        tooltip {
+            enabled = true
+            valueFormatter = { value -> "$value%" }
+        }
+    }
+    event { onItemSelected { selection -> onRateSelected(selection.item) } }
+}
 ```
 
-本地交互调试：
+## 运行与接入检查清单
 
-```powershell
-.\gradlew :h5App:jsBrowserProductionRun
-```
-
-访问 `http://localhost:8080/`，默认加载 `chart_showcase`；也可用 `?page_name=chart_showcase` 显式指定页面。2026-07-24 已在 1280×720 浏览器视口实测：2 个 Canvas 成功挂载、主题切换成功、折线点击命中返回原始系列与条目，控制台无运行时错误。
-
-两端示例复用 `commonMain/ChartShowcasePage.kt` 中同一组确定性样本。十字光标、平移/缩放、K 线成交量组合和数据更新录屏属于 M1–M3 交付门槛，不计入 M0 已完成范围。
-
-## Kuikly AI 股票行情 Demo 接入
-
-仅在组件通过 M0–M2 验收后接入业务 Demo，接入顺序如下：
-
-1. 在 Demo 的数据层将股票行情响应转换为 `ChartPoint` 与 `KLineEntry`，保留时间戳/业务 ID，不把网络对象传入图表。
-2. 用 `ChartViewport` 保存用户浏览位置；仅在业务明确要求时用 `followLatest` 跟随最新报价。
-3. 将加载、空态、错误、停牌或无成交量提示放在图表容器外部；图表接收合法快照后只负责绘制与交互。
-4. 复用组件的 Tracker 回调驱动行情详情面板，并用真实页面录屏验证选择、更新和边界处理。
-5. 在 Demo 文档中记录使用的组件版本、API 适配层、Android/H5 验证环境与已知限制。
-
-## 接入检查清单
-
-- [ ] 图表处于有确定尺寸的 Kuikly 容器；零尺寸不应产生可见图形。
-- [ ] 每个 K 线时间戳唯一且 OHLC 已在业务/数据层校验。
-- [ ] 数据更新使用新列表快照，不原地修改图表内部状态。
-- [ ] Tracker、平移和缩放按平台能力开关启用，并处理降级。
-- [ ] API/KDoc、Android/H5 示例、自动化测试和 Demo 录屏与当前实现一致。
+- 依赖 `chartkit` 模块或已发布的同版本制品。
+- 把图表放入有确定尺寸的 Kuikly 容器；零尺寸容器不会产生可见图形。
+- 网络加载、错误和重试由业务层处理，再向图表传入不可变数据列表。
+- 每个正式平台的示例 README 附截图、交互录屏和最低支持版本；不得只展示随机数据或空白 Canvas。
+- 若使用 H5 Showcase，明确它是实验性验证，并记录构建命令、浏览器版本和已知差异。

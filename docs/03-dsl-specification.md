@@ -2,87 +2,80 @@
 
 ## 1. 契约目标
 
-DSL 是调用方唯一需要面对的图表配置面。它采用 Kuikly 的 `ViewContainer` 扩展 + `ComposeView<Attr, Event>` 结构：`attr {}` 配置不可变数据、样式和交互，`event {}` 注册业务回调。以下名称是本轮目标公共契约；代码落地后必须与 KDoc、示例和 API 参考完全一致。
+DSL 是组件最重要的兼容面：调用方只需声明数据与外观，无需关心 Canvas、像素坐标或平台差异。它遵循 Kuikly 官方的 ComposeView 习惯：扩展函数创建组件，`attr {}` 管理状态和视觉配置，`event {}` 管理外部回调。以下是首版的公共契约；实现时应以此命名并补充 KDoc，变更须走语义化版本升级。
 
-## 2. 折线行情示例
+## 2. 通用结构
 
 ```kotlin
 LineChart {
     attr {
-        data(ChartSeries("收盘价", dailyPoints, Color(0xFF2F80ED)))
+        data(ChartSeries("活跃用户", weeklyPoints, Color(0xFF2F80ED)))
         xAxis { labelFormatter { point, _ -> point.label.orEmpty() } }
         yAxis { tickCount = 5; includeZero = false }
-        line { smooth = false; showPoints = false }
-        tooltip { mode = TooltipMode.TRACKER; keepOnRelease = false }
+        grid { visible = true; color = Color(0xFFE9EDF3) }
+        line { smooth = true; showPoints = true; showValueLabels = false }
+        tooltip {
+            enabled = true
+            trackerEnabled = true // 实验性，默认 false
+            keepTrackerOnRelease = false
+        }
         interaction {
-            enableTracker = true
-            enablePan = true
-            enableZoom = true
-            minZoom = 1f
-            maxZoom = 8f
+            enablePan = true // 实验性，默认 false
+            visibleItemCount = 20
+            maxRenderPointCount = 240 // 0 按绘图区宽度自动计算
         }
     }
-    event {
-        onTrackerChanged { tracker -> updateQuotePanel(tracker) }
-        onViewportChanged { viewport -> saveViewport(viewport) }
-    }
+    event { onItemSelected { selection -> onPointSelected(selection) } }
 }
 ```
 
-Tracker 吸附到最近可见 X 槽；多系列折线在同一槽位返回一个 `ChartTracker`，而不是各自寻找最接近的不同 X 值。
+`BarChart` 与 `AreaChart` 复用笛卡尔坐标、网格、Tooltip 与主题。`MixedChart` 使用 `barData` 和 `lineData` 接收分类系列，两类系列按输入索引共享分类槽和 Y 轴；`PieChart` 只复用主题、Tooltip、事件与格式化器，不伪造坐标轴 API。
 
-## 3. K 线与成交量示例
-
-```kotlin
-KLineChart {
-    attr {
-        data(kLines)
-        kLine {
-            upColor = Color(0xFFEB5757)
-            downColor = Color(0xFF27AE60)
-            showLastPrice = true
-        }
-        volume {
-            visible = true
-            heightRatio = 0.24f
-            colorByPriceDirection = true
-        }
-        tooltip { mode = TooltipMode.TRACKER }
-        interaction { enableTracker = true; enablePan = true; enableZoom = true }
-    }
-    event { onTrackerChanged { tracker -> showOhlcv(tracker) } }
-}
-```
-
-`KLineChart` 固定组合价格区和可选成交量区。调用方不能分别给两个区域传入不同的时间序列；每根成交量柱必须与同一 `KLineEntry` 的时间戳对应。
-
-## 4. 数据模型
+## 3. 数据模型
 
 | 类型 | 必填字段 | 语义 |
 | --- | --- | --- |
-| `ChartPoint` | `x`、`y` | 折线数据点；`label` 可选。 |
-| `BarEntry` | `value`、`label` | 柱状图分类或时间槽数据。 |
-| `KLineEntry` | `timestamp`、`open`、`high`、`low`、`close` | 一根按时间排序的 OHLC K 线；`volume?`、`label?`、`id?` 可选。 |
-| `ChartSeries<T>` | `name`、`items`、`color?` | 折线/柱图系列及稳定标识。 |
-| `ChartSelection<T>` | `seriesIndex`、`itemIndex`、`item`、`stableId` | 单项选择回调；`itemIndex` 指向原始输入。 |
-| `ChartTracker` | `slotIndex`、`timestamp?`、`selections` | 十字光标所在 X 槽及该槽全部可见数据。 |
-| `ChartViewport` | `startIndex`、`endIndex`、`scale` | 可恢复的可视数据范围；范围为闭区间并会被数据边界钳制。 |
+| `ChartPoint` | `x: Double`、`y: Double` | 折线数据点；`label` 可选，用作 X 轴显示。 |
+| `BarEntry` | `value: Double`、`label: String` | 单组柱的分类数据。 |
+| `PieEntry` | `label: String`、`value: Double`、`color?` | 饼环扇区；非有限值、零和负值不参与布局。 |
+| `ChartSeries<T>` | `name`、`items` | 同图多系列的数据与图例标识。 |
+| `ChartSelection<T>` | `seriesIndex`、`itemIndex`、`item` | 点击命中后的稳定回调载荷。 |
+| `MixedChartSelection` | `seriesType`、`seriesIndex`、`itemIndex`、`item` | 组合图回调；系列索引分别属于柱或线系列列表。 |
+| `ChartViewport` | `startIndex`、`endIndex`、`scale` | 候选密集数据浏览的可恢复状态；尚未成为 P0 契约。 |
 
-## 5. 配置块和默认值
+折线图支持多系列；柱状图 P0 支持单系列，后续可显式支持 `GROUPED` 与 `STACKED`。模式切换是显式属性，不能静默改变柱宽或数值语义。
 
-| 配置 | 关键属性 | 默认与规则 |
+组合图的柱系列和线系列均使用 `ChartSeries<BarEntry>`：`BarEntry.label` 定义分类标签，输入索引定义共享 X 槽，`value` 进入同一个 Y 轴数据域。线点命中优先于其下方柱体；离开线点命中半径后再回落到柱命中。
+
+`SparklineChart` 复用 `ChartSeries<ChartPoint>`、折线布局和 `LineChartEvent`，但只接受零或一个系列。默认隐藏坐标轴、网格、图例、数据点和 Tooltip，并启用平滑线；`selectable=true` 后才处理点击选择。
+
+## 4. 默认值与校验
+
+| 配置 | 默认值 | 规则 |
 | --- | --- | --- |
-| `line {}` | `smooth`、`showPoints`、`showValueLabels` | 默认直线、无点、无值标签；无效值导致断线。 |
-| `bars {}` | `mode`、`barWidthRatio`、`showValueLabels` | P0 单系列；分组/堆叠是后续显式模式，不静默改变语义。 |
-| `kLine {}` | `upColor`、`downColor`、`showLastPrice` | 涨跌颜色可配置；实体与影线都按同一方向颜色绘制。 |
-| `volume {}` | `visible`、`heightRatio`、`colorByPriceDirection` | 默认可见，价格区/成交量区之间保留主题定义的间隙。 |
-| `tooltip {}` | `mode`、`formatter`、`keepOnRelease` | 默认 `TAP`；`TRACKER` 需 `enableTracker=true`。 |
-| `interaction {}` | `enableTracker`、`enablePan`、`enableZoom`、`minZoom`、`maxZoom` | 手势默认关闭；不支持的平台必须降级，不得回调虚假的视口。 |
-| `xAxis {}` / `yAxis {}` | `visible`、`tickCount`、formatter | K 线价格与成交量分别配置 Y 轴，但共用 X 轴和视口。 |
+| `xAxis.visible` / `yAxis.visible` | `true` | 轴隐藏时仍保留必要边距，除非显式关闭。 |
+| `grid.visible` | `true` | 默认随 Y 轴刻度绘制水平网格。 |
+| `yAxis.tickCount` | `5` | 最小为 2，最终数量由漂亮刻度算法决定。 |
+| `showValueLabels` | 折线 `false`；柱状 `true` | 标签过密时可截断或跳过，但不能越界。 |
+| `interaction.enabled` | `true` | 空数据时不触发回调。 |
+| `tooltip.enabled` | `true` | P0 为点击提示。 |
+| `tooltip.trackerEnabled` | `false` | P1 折线/面积长按追踪；已完成 Showcase 验收，仍需显式开启。 |
+| `tooltip.keepTrackerOnRelease` | `false` | 仅在追踪开启时生效，控制 `end` 后是否保留最后选中槽。 |
+| `interaction.enablePan` | `false` | P1 折线/面积水平平移；已完成 Showcase 验收，仍需显式开启。 |
+| `interaction.visibleItemCount` | `0` | `0` 显示全部数据；非零值必须至少为 2，初始窗口默认对齐末尾数据。 |
+| `interaction.maxRenderPointCount` | `0` | 折线/面积/Sparkline 每个可见系列的最大绘制点数；`0` 按绘图区宽度自动计算，显式值必须至少为 4。超限时用 min/max 桶采样保留首尾、峰谷、坏点分段和原始索引。 |
+| `pie.innerRadiusRatio` | `0.58` | `0` 为饼图，`(0, 0.85]` 为环图。 |
+| `pie.startAngleDegrees` | `-90` | 默认从十二点方向开始，必须为有限值。 |
+| `pie.gapAngleDegrees` | `1.5` | 扇区间隙范围为 `[0, 10]`；单扇区自动取消间隙。 |
+| `SparklineChart.selectable` | `false` | 默认不处理点击；开启后回调 `ChartSelection<ChartPoint>`。 |
+| `theme` | `ChartTheme.light()` | 内置 Light、Dark、Ocean、Sunset；系列显式颜色优先。 |
 
-## 6. 校验与兼容规则
+数据项出现 `NaN` 或无穷值时跳过该项；若一个系列没有有效项，则按空数据处理。`tickCount < 2`、负边距、无效颜色等开发者配置应在构建 DSL 时失败。
 
-- `KLineEntry` 的 OHLC 必须为有限数值，且满足 `low <= open/close <= high`；不符合的外部数据被过滤并可通过诊断回调观察。
-- `timestamp` 必须在一个 `KLineChart` 中唯一。重复时间戳由数据层明确合并或拒绝，Renderer 不擅自覆盖。
-- `minZoom >= 1f` 且 `maxZoom >= minZoom`；负边距、空系列名和非法颜色等开发者错误在 DSL 构建时失败。
-- 新增公共字段必须提供保持旧行为的默认值；回调索引必须始终对应原始输入，而非采样后的显示索引。
+## 5. 兼容性规则
+
+- 新增公共字段时必须提供保持旧行为的默认值。
+- 不得复用已发布字段名称表达相反含义。
+- 回调索引必须对应输入序列中的原始项；若因无效值过滤发生偏移，需保留原始索引。
+- 主题只提供默认值，系列级显式配置优先级最高。
+- 格式化器和渲染器优先级固定为：调用方 `slot/renderer` > 系列配置 > 主题 > 内置默认实现。

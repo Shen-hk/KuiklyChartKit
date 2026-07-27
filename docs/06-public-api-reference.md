@@ -1,52 +1,55 @@
 # 公共 API 参考
 
-> 本文档同时记录 M0 已实现 API 与 M1–M2 目标 API。表中“已实现”签名以当前源码和 KDoc 为准；“计划”项不能被当作当前已发布接口。若签名调整，应同时更新本文档、示例与兼容性说明。
+> 本文档定义拟公开 API。代码完成后，每个公共符号必须拥有等价 KDoc，示例名称必须与实际代码一致。候选扩展不构成已发布承诺。
 
 ## 图表入口
 
-所有入口均为 Kuikly `ViewContainer` 扩展，创建对应的 `ComposeView<Attr, Event>`，调用形态固定为 `Chart { attr { ... } event { ... } }`。
+所有入口都是 Kuikly `ViewContainer` 扩展函数，创建对应 `ComposeView<Attr, Event>`。调用方式固定为 `Chart { attr { ... } event { ... } }`。
 
-| API | 状态 | 说明 |
+| API | 说明 |
+| --- | --- |
+| `ViewContainer<*, *>.LineChart(init)` | P0 折线；支持多系列、直线/平滑、点和图例。 |
+| `ViewContainer<*, *>.BarChart(init)` | P0 柱图；可扩展分组、堆叠和负值。 |
+| `ViewContainer<*, *>.AreaChart(init)` | P1 面积图；复用折线笛卡尔、选择、追踪和平移内核。 |
+| `ViewContainer<*, *>.MixedChart(init)` | P1 组合图；分类柱与分类折线共享坐标、图例和 Tooltip。 |
+| `ViewContainer<*, *>.PieChart(init)` | P1 饼环图；独立极坐标布局，支持扇区点击与 Tooltip。 |
+| `ViewContainer<*, *>.SparklineChart(init)` | P1 紧凑趋势；默认单系列、无轴、无网格、无图例且不响应点击。 |
+| `ChartTheme.light()` | 默认浅色主题；另提供 `dark()`、`ocean()`、`sunset()`。 |
+
+图表尺寸由 Kuikly 布局属性决定；不提供与布局系统冲突的像素尺寸构造参数。
+
+## 数据、格式化与配置
+
+| API | 字段/签名 | 说明 |
 | --- | --- | --- |
-| `ViewContainer<*, *>.LineChart(init)` | M0 已实现 | 多系列、直线/平滑、坐标轴、网格、图例、空态、点击与基础 Tooltip；Tracker 属于 M1。 |
-| `ViewContainer<*, *>.BarChart(init)` | M0 已实现 | 分类柱、并列多系列、颜色、标签、正负值零基线、点击与基础 Tooltip。 |
-| `ChartTheme.light()` / `dark()` / `ocean()` / `sunset()` | M0 已实现 | 主题默认值；系列显式颜色优先。 |
-| `ViewContainer<*, *>.KLineChart(init)` | M2 计划 | OHLC K 线与可选成交量组合；共享 X 轴、视口和 Tracker。 |
+| `ChartPoint` | `x`、`y`、`label?` | 折线或面积的数据项。 |
+| `BarEntry` | `value`、`label` | 分类柱数据项。 |
+| `PieEntry` | `label`、`value`、`color?` | 饼环扇区；仅有限且大于零的值参与布局。 |
+| `ChartSeries<T>` | `name`、`items`、`color?` | 一个系列及其稳定标识。 |
+| `ChartSelection<T>` | `seriesIndex`、`itemIndex`、`item` | 命中后回调的原始项与索引。 |
+| `ChartTracker<T>` | `x`、`selections` | 长按追踪结果；`x` 为数据坐标，选择项保留原始索引。 |
+| `ChartViewport` | `startIndex`、`endIndex` | 折线/面积窗口的闭区间，保留原始数据索引。 |
+| `MixedChartSelection` | `seriesType`、`seriesIndex`、`itemIndex`、`seriesName`、`item` | 组合图命中结果；系列索引分别在柱/线系列列表内计数。 |
+| `AxisLabelFormatter<T>` | `(item: T, index: Int) -> String` | 格式化分类标签。 |
+| `ValueFormatter` | `(value: Double) -> String` | 格式化轴、标签和 Tooltip。 |
 
-## 数据与状态模型
-
-| API | 状态 | 字段/签名 | 说明 |
-| --- | --- | --- | --- |
-| `ChartPoint` | M0 已实现 | `x: Float`、`y: Float`、`label: String` | 折线数据项；非法坐标形成断线，不导致崩溃。 |
-| `BarEntry` | M0 已实现 | `label: String`、`value: Float` | 柱状数据项。 |
-| `ChartSeries<T>` | M0 已实现 | `name`、`items`、`color?` | 多系列折线/柱图的数据与样式。 |
-| `ChartSelection<T>` | M0 已实现 | `seriesIndex`、`itemIndex`、`seriesName`、`item` | 单项命中结果；索引和数据项对应原始输入。 |
-| 轴/Tooltip formatter | M0 已实现 | `(Float) -> String` | 格式化坐标、柱值与基础 Tooltip。 |
-| `KLineEntry` | M2 计划 | `timestamp`、`open`、`high`、`low`、`close`、`volume?`、`label?`、`id?` | 一根金融行情 OHLC 数据；时间戳或 `id` 作为稳定身份。 |
-| `ChartTracker` | M1 计划 | `slotIndex`、`timestamp?`、`selections` | Tracker 的统一 X 槽及该槽所有可见选择。 |
-| `ChartViewport` | M1 计划 | `startIndex`、`endIndex`、`scale` | 当前可视区间与缩放比例，可传入或通过回调保存。 |
-
-## 配置块
-
-| 配置块 | 状态 | 关键属性 | 说明 |
-| --- | --- | --- | --- |
-| `xAxis {}` / `yAxis {}` | M0 已实现 | `visible`、`tickCount`、`includeZero`、`labelFormatter` | 轴范围、刻度和标签；`tickCount` 支持 2..10。 |
-| `grid {}` / `legend {}` | M0 已实现 | `visible`、`lineWidth` | 网格和图例显示。 |
-| `line {}` | M0 已实现 | `smooth`、`showPoints`、`lineWidth`、`pointRadius` | 折线外观。 |
-| `bars {}` | M0 已实现 | `mode`、`barWidthRatio`、`showValueLabels`、`cornerRadius` | 默认 `GROUPED` 并列多系列；显式 `SINGLE` 时拒绝多系列输入，避免静默丢数据。 |
-| `tooltip {}` | M0 已实现 | `enabled`、`valueFormatter` | 点击选择的提示内容。 |
-| `interaction {}` | M1 计划 | `enableTracker`、`enablePan`、`enableZoom`、`minZoom`、`maxZoom` | 选择、平移、缩放与边界。 |
-| `viewport {}` | M1 计划 | `initial`、`followLatest` | 初始可视范围和数据更新时是否跟随最新数据。 |
-| `kLine {}` | M2 计划 | `upColor`、`downColor`、`showLastPrice` | K 线涨跌颜色与末价标记。 |
-| `volume {}` | M2 计划 | `visible`、`heightRatio`、`colorByPriceDirection` | 成交量区显示与样式。 |
-
-## 回调与更新语义
-
-| 回调 | 触发时机 | 契约 |
+| 配置块 | 关键属性 | 说明 |
 | --- | --- | --- |
-| `onItemSelected`（M0 已实现） | 点击命中单个折线点或柱。 | 返回原始系列索引、条目索引、系列名和原始项。 |
-| `onTrackerChanged`（M1 计划） | Tracker 开始、移动、结束或清除。 | 同一 X 槽的多系列/成交量数据必须一致。 |
-| `onViewportChanged`（M1 计划） | 平移或缩放导致可视范围实际变化。 | 返回已钳制、可恢复的 `ChartViewport`。 |
-| `onDataDiagnostic`（M2 计划） | 外部数据被过滤、重复或不完整。 | 不替代渲染；供业务记录或监控。 |
+| `xAxis {}` / `yAxis {}` | `visible`、`tickCount`、`includeZero`、formatter | 坐标范围、漂亮刻度和标签。 |
+| `grid {}` | `visible`、`color`、`lineWidth` | 网格外观。 |
+| `line {}` | `smooth`、`showPoints`、`showValueLabels` | 折线表现。 |
+| `area {}` | `fillColors` | 面积填充色，按系列索引循环使用；建议使用含透明度的 ARGB。 |
+| `pie {}` | `innerRadiusRatio`、`startAngleDegrees`、`gapAngleDegrees`、`showValueLabels`、`centerLabel` | `innerRadiusRatio=0` 为饼图，大于零为环图。 |
+| `barData(...)` / `lineData(...)` | `ChartSeries<BarEntry>` | 组合图的柱/线系列；输入顺序共同定义分类槽。 |
+| `SparklineChart.selectable` | `false` | 显式开启后复用折线点击选择与 `LineChartEvent`；Tooltip 仍独立控制。 |
+| `bars {}` | `mode`、`barWidthRatio`、`showValueLabels` | 单组、分组或堆叠柱。 |
+| `legend {}` | `visible`、`position`、`toggleSeriesOnTap` | 图例和系列可见性。 |
+| `tooltip {}` | `enabled`、`trackerEnabled`、`keepTrackerOnRelease`、`formatter` | 点击提示；折线/面积长按追踪和释放策略。 |
+| `interaction {}` | `enablePan`、`visibleItemCount`、`maxRenderPointCount` | 折线/面积水平平移、可视窗口与每系列采样上限；采样保留峰谷、坏点分段和原始索引。 |
+| `animation {}` | `enabled`、`durationMs`、`style` | 渐显或裁剪揭示，默认关闭。 |
 
-M0 通过再次设置 `data(...)` 提交新快照，绘制和点击回调始终基于最新列表。以稳定 ID 恢复选择和视口属于 M1/M2 数据更新契约，尚未公开。当前格式化与绘制优先级为：系列或图表显式配置 > `ChartTheme` > 内置默认值。
+## 回调与扩展优先级
+
+`onItemSelected` 接收 `ChartSelection<T>`。`LineChartEvent.onTrackerChanged` 接收 `ChartTracker<ChartPoint>?`；`null` 表示非持久追踪已释放或清除。`onViewportChanged` 返回平移后已钳制的 `ChartViewport`。`AreaChart` 复用同一事件类型。缩放尚未定稿。平台原生对象、Canvas 引用和手势原始坐标不暴露给使用方。
+
+格式化与渲染优先级固定为：调用方 `slot/renderer` > 系列显式配置 > `ChartTheme` > 内置默认实现。公共 API 不依赖 `internal` 的 Renderer、布局矩形或 Canvas 命令；新增字段必须有保留旧行为的默认值。

@@ -2,59 +2,69 @@
 
 ## 1. 设计原则
 
-图表内核只依赖 Kuikly 公共 Canvas/Compose 能力，数据计算、视口状态和 `RenderPlan` 均位于 `chartkit/src/commonMain`。Android 与 H5 宿主只负责页面启动与运行环境，不承载金融行情逻辑。组件表面保持 Kuikly 的 `ComposeView<Attr, Event>` 模式。
+图表内核只依赖 Kuikly 的公共 Canvas/Compose 能力，所有数据计算与绘制计划放在 `chartkit/src/commonMain`。平台宿主只负责启动 Kuikly 页面与提供运行环境，不承载图表业务逻辑。组件表面严格采用官方的 `ComposeView<Attr, Event>` 模式。
 
 ```text
-声明式 DSL / 行情快照
-    -> ChartSpec + ChartViewport
-    -> 数据规范化（排序、校验、稳定 ID）
-    -> LayoutEngine（价格区、成交量区、坐标轴、标签）
-    -> RenderPlan（线/柱/K线/十字线/命中区域）
-    -> Kuikly Canvas + Compose Tooltip 覆盖层
+开发者 DSL
+    -> 不可变 ChartSpec
+    -> 数据校验与规范化
+    -> LayoutEngine（坐标域、刻度、标签、绘制区域）
+    -> RenderPlan（线、柱、文本、网格、命中区域）
+    -> Kuikly Canvas
+    -> 平台渲染器
 ```
 
-事件沿反方向流动：`click / longPress / pan / zoom` -> `GestureCoordinator` -> `HitTestEngine` -> `Selection / ChartViewport` -> 重建 `RenderPlan` -> callback。命中、十字线和 Tooltip 必须都读取同一份 `RenderPlan`，不得分别按不同坐标公式计算。
+交互事件沿相反方向流动：Canvas 事件 -> `HitTestEngine` -> `Selection` -> tooltip/highlight/callback。命中测试必须复用 `RenderPlan` 的坐标，不得按另一套公式重新计算。
+
+```kotlin
+fun ViewContainer<*, *>.LineChart(init: LineChartView.() -> Unit) {
+    addChild(LineChartView(), init)
+}
+
+class LineChartView : ComposeView<LineChartAttr, LineChartEvent>() {
+    override fun createAttr() = LineChartAttr()
+    override fun createEvent() = LineChartEvent()
+    override fun body(): ViewBuilder = { /* Canvas + Tooltip overlay */ }
+}
+```
+
+这使调用方沿用 Kuikly 熟悉的 `attr {}` 配置和 `event {}` 回调；公开 `View` 只负责组合，算法与绘制不泄漏到调用方。
 
 ## 2. 推荐目录与职责
 
 ```text
-chartkit/src/commonMain/kotlin/.../chart/
-  model/          ChartPoint、BarEntry、KLineEntry、Viewport、Theme、ChartSpec
-  dsl/            LineChart、BarChart、KLineChart 及配置构建器
-  data/           排序、OHLC 校验、更新合并、采样与原始索引映射
-  layout/          坐标域、刻度、价格/成交量分区、标签与可绘制区域
-  render/          RenderPlan、Line/Bar/Candle/Volume/Axis Renderer
-  interaction/     GestureCoordinator、HitTestEngine、Tracker、ViewportController
-  components/      ComposeView、Attr、Event 与 Canvas/Tooltip 覆盖层
-  demo/            Showcase 与股票行情 Demo 的数据适配边界
+chartkit/src/commonMain/kotlin/com/kuikly/kuiklychartkit/chart/
+  model/          ChartPoint、BarEntry、AxisSpec、Theme、ChartSpec
+  dsl/            LineChart、BarChart 及配置构建器
+  layout/          标尺、刻度、标签测量、可绘制区域计算
+  render/          RenderPlan、LineRenderer、BarRenderer、AxisRenderer
+  interaction/     HitTestEngine、Selection、Tooltip
+  components/      对接 Kuikly Compose/Canvas 的公开视图
+  accessibility/   图表摘要、选中项语义与替代文本
 ```
 
-`model`、`data`、`layout`、`interaction` 尽量保持纯 Kotlin，便于 `commonTest` 对价格计算、视口与边界进行确定性验证。`render` 只消费已计算的计划，不修改 DSL 输入；`components` 负责观察数据和尺寸变化、分发事件并发出回调。
+`model` 与 `layout` 应尽量是纯 Kotlin，以便用 `commonTest` 进行确定性测试。`render` 只接收已计算好的 `RenderPlan`，不改变业务数据。`components` 负责监听数据/尺寸变化，触发布局、绘制和事件分发。
 
-## 3. 核心数据与更新流
+## 3. 核心数据流
 
-1. DSL 接收不可变数据快照；`KLineEntry` 必须以 `timestamp` 或显式 `id` 建立稳定身份。
-2. 规范化步骤排序时间序列、过滤非有限数值、验证 `low <= min(open, close) <= max(open, close) <= high`，并保留原始索引和诊断信息。
-3. `ViewportController` 将数据总范围与当前 `start/end/scale` 相交，得到当前可视窗口。拖动和缩放只能更新视口，不得改写调用方数据。
-4. `LayoutEngine` 计算 `pricePlotRect`、`volumePlotRect`、共享 X 轴、各自 Y 轴和标签。K 线与成交量的每个可视槽必须对应同一个稳定数据项。
-5. `RenderPlan` 同时产出绘制原语、每个数据项的屏幕位置/包围盒和 X 槽索引。Tracker 在最近 X 槽查找价格、成交量和 Tooltip 内容。
-6. 新快照到达时，优先以稳定 ID 恢复选中项和视口；找不到时清除选中或按配置回到尾部，绝不把旧下标静默映射到新数据。
+1. DSL 构建 `ChartSpec`，并在构建结束时检查必填项与范围。
+2. 规范化步骤过滤无效值、计算数据域；所有值相等时扩展一个安全范围，防止除零。
+3. `LayoutEngine` 根据视图宽高、边距和文字测量结果计算 `plotRect`、刻度与标签位置。
+4. Renderer 将布局转换为 Canvas 原语，并同时保留数据项的屏幕包围盒/点位以供命中测试；复杂图在 Canvas 回调中开启批量绘制（仅能力探针通过时）。
+5. 选中态或数据变化时，重新生成计划；绘制过程不修改 DSL 输入。
 
-## 4. 交互状态机
+## 4. 平台抽象边界
 
-```text
-Idle --tap--> Selected
-Idle --long press--> Tracking --move--> Tracking
-Tracking --end--> Idle 或 Selected（由 keepOnRelease 决定）
-Idle --horizontal pan--> Panning --end/cancel--> Idle
-Idle/Panning --zoom--> Zooming --end/cancel--> Idle
-```
+- 公共层：数据模型、布局、颜色值、事件回调、Canvas 绘制命令。
+- 平台层：仅由 Kuikly 处理 Canvas 实现、字体度量和触摸事件接入。
+- 若多端 Canvas API 有差异，优先在一个内部 `CanvasScope` 适配层消化，禁止把条件判断散落到 Renderer。
+- Tooltip 优先作为 Compose 覆盖层而非绘制在 Canvas 内：它能使用正常的圆角、阴影、文字布局和无障碍属性；选中高亮仍由 Canvas 绘制以保证坐标一致。
+- 线性渐变、路径裁剪和文本测量是跨端基线；不得以平台实验性能力表达必要信息。
 
-Tracker 激活时，滑动优先更新吸附到 X 槽的选中项；未激活 Tracker 的横向移动才进入平移。缩放以手势中心为锚点，并被 `minZoom`、`maxZoom` 与数据边界钳制。若当前平台未支持缩放，公共开关必须无效化并有可观察的降级说明，不能伪造缩放结果。
+## 5. 错误与性能策略
 
-## 5. 平台与性能边界
-
-- 公共层只暴露数据模型、颜色值、配置和业务回调；手势原始对象、DOM/Android 对象和 Canvas 引用不外泄。
-- Tooltip 由 Compose 覆盖层布局，十字线、选中点和 K 线高亮由 Canvas 绘制，保证坐标一致并可避免越界。
-- 当可视 K 线/点超过可绘制像素容量时，使用像素桶保留峰谷；K 线不可被错误合成为不存在的 OHLC，必要时按时间桶聚合并在 API 中显式标明。
-- 只在尺寸、数据、主题、视口或交互状态变化时重算。文本测量、刻度与坐标转换在一次帧内缓存；批量 Canvas 命令仅在双端探针通过后使用。
+- 对空数据绘制占位文案或空状态，不抛异常。
+- 对开发者配置错误（例如空系列名、负柱宽）在 DSL 构建期 `require` 并给出字段名；对外部数据错误采取过滤与诊断。
+- 只在尺寸、数据、样式或选中态变化时重算布局；文本测量与坐标变换应在一次渲染帧中缓存。
+- 数据量超过可视像素密度时，先对每个 X 像素桶保留 min/max 点，保证峰谷可见；原始数据与索引始终用于回调。
+- 先保证静态渲染正确，再引入动画；动画必须可选，不能改变最终几何结果。

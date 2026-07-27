@@ -1,26 +1,33 @@
 # KuiklyChartKit
 
-面向金融行情场景的 Kuikly 跨端图表组件库。P0 / M0 已实现折线图、柱状图、Kuikly 官方风格声明式 DSL、点击选择与基础 Tooltip，并用同一份 `commonMain` 页面完成 Android APK 和 H5 production 站点验证。
+KuiklyChartKit 是面向通用数据可视化场景的 Kuikly 跨端图表组件库，对应 [KuiklyUI Issue #1477](https://github.com/Tencent-TDS/KuiklyUI/issues/1477)。总体目标是交付可复用、可扩展、可验证的图表基础能力，而不是面向某个行业或业务 Demo 的专用图表库。
 
-> 对应任务：[Tencent-TDS/KuiklyUI#1477](https://github.com/Tencent-TDS/KuiklyUI/issues/1477)  
-> 当前基线：Kuikly `2.7.0` · Kotlin `2.1.21` · Android + H5
+当前已完成 P0/M0 的折线图、柱状图、Kuikly 官方风格声明式 DSL、点击选择和基础 Tooltip；长按追踪、水平平移、面积图、饼环图、组合图和 Sparkline 已完成，P1 密集数据采样、异常数据回归、本机自动化证据及人工验收也已收口。下一阶段进入 P2 能力探针；成为发布候选前仍需补齐 Android、iOS、OpenHarmony 的正式截图/录屏与设备记录。
+
+> 当前基线：Kuikly `2.7.0` · Kotlin `2.1.21`
 
 ## 当前完成度
 
 | 能力 | 状态 | 说明 |
 | --- | --- | --- |
 | `LineChart` | P0 已完成 | 多系列、直线/平滑、点、轴、网格、图例、空态、点击选择和基础 Tooltip。 |
+| `AreaChart` | P1 首批已完成 | 复用折线坐标、点击、长按追踪和平移协议；支持平滑边界、零基线和分系列半透明填充。 |
+| `PieChart` | P1 第二批已完成 | 独立极坐标布局；支持饼/环切换、扇区间隙、百分比标签、中心汇总和点击选择。 |
+| `MixedChart` | P1 第三批已完成 | 分类柱与分类折线共享坐标、图例和 Tooltip；选择结果明确区分柱/线来源。 |
+| `SparklineChart` | P1 第四批已完成 | 单系列紧凑趋势；默认隐藏轴、网格、图例、数据点和 Tooltip，可选点击选择。 |
 | `BarChart` | P0 已完成 | 分类柱、并列多系列、正负值零基线、值标签、圆角、点击选择和基础 Tooltip。 |
 | Kuikly DSL | P0 已完成 | `ViewContainer` 扩展 + `ComposeView<Attr, Event>`；错误配置给出字段级异常。 |
-| Android Showcase | P0 已完成 | `chart_showcase` 页面已接入路由，Debug APK 构建通过。 |
-| H5 Showcase | P0 已完成 | 官方 Web Render 真宿主，业务包自动嵌入，浏览器实际挂载 2 个 Canvas。 |
-| Tracker / Pan / Zoom | M1 计划 | 完成双端手势能力探针后公开 API。 |
-| K 线 / 成交量 | M2 计划 | 复用笛卡尔内核，增加 OHLC、共享视口和行情边界处理。 |
-| Kuikly AI 股票 Demo | M3 计划 | 组件门禁通过后接入真实业务页面。 |
+| Android Showcase | 已验证 | `chart_showcase` 页面已接入路由，Debug APK 构建通过。 |
+| H5 Showcase | 实验性验证 | 使用同一份 `commonMain` 页面完成浏览器验证；不替代正式平台支持矩阵。 |
+| 折线长按追踪 | P1 已验收 | 默认关闭；按最近 X 槽聚合同槽多系列，并保留原始数据索引。 |
+| 折线水平平移 | P1 已验收 | 默认关闭；可配置可视点窗口，范围变化返回钳制后的原始索引。 |
+| 密集数据采样 | P1 已完成 | 折线、面积与 Sparkline 共用 min/max 桶采样；保留峰谷、坏点分段和原始索引，可配置每系列绘制上限。 |
+| 缩放 | 候选扩展 | 需通过能力探针后再进入公共 API。 |
+| Showcase/性能证据 | P1 已验收 | Performance Lab 覆盖 100/1,000/5,000 点；29 项测试、Android APK 与 H5 发布构建通过。正式三端视觉证据待补。 |
 
-“已完成”和“计划”能力的逐项证据见 [M0 实现与验收记录](docs/11-m0-implementation-status.md)。
+已实现功能与验证记录见 [M0 实现与验收记录](docs/11-m0-implementation-status.md) 和 [P1 实现与验收记录](docs/12-p1-implementation-status.md)；完整范围和路线见 [开发文档索引](docs/README.md)。
 
-## 30 秒构建
+## 构建
 
 在 Windows PowerShell 的仓库根目录执行：
 
@@ -31,24 +38,15 @@
 # Android Debug APK
 .\gradlew :androidApp:assembleDebug
 
-# H5 production 站点
+# 实验性 H5 Showcase
 .\gradlew :h5App:publishChartShowcase
 ```
 
-产物：
+Android APK 位于：
 
 ```text
 androidApp/build/outputs/apk/debug/androidApp-debug.apk
-h5App/build/dist/js/productionExecutable/
 ```
-
-H5 本地运行：
-
-```powershell
-.\gradlew :h5App:jsBrowserProductionRun
-```
-
-浏览器访问 `http://localhost:8080/`。
 
 ## DSL 示例
 
@@ -57,31 +55,20 @@ LineChart {
     attr {
         data(
             ChartSeries(
-                name = "收盘价",
+                name = "访问量",
                 items = listOf(
-                    ChartPoint(1f, 12.4f, "周一"),
-                    ChartPoint(2f, 13.1f, "周二"),
-                    ChartPoint(3f, 12.8f, "周三"),
+                    ChartPoint(1f, 120f, "周一"),
+                    ChartPoint(2f, 168f, "周二"),
+                    ChartPoint(3f, 142f, "周三"),
                 ),
             ),
         )
         theme = ChartTheme.ocean()
-        yAxis {
-            tickCount = 5
-            includeZero = false
-        }
-        line {
-            smooth = true
-            showPoints = true
-        }
+        yAxis { tickCount = 5; includeZero = false }
+        line { smooth = true; showPoints = true }
         tooltip { enabled = true }
     }
-    event {
-        onItemSelected { selection ->
-            // selection.item 是原始 ChartPoint；
-            // seriesIndex/itemIndex 保持调用方输入索引。
-        }
-    }
+    event { onItemSelected { selection -> onPointSelected(selection.item) } }
 }
 ```
 
@@ -90,52 +77,87 @@ BarChart {
     attr {
         data(
             ChartSeries(
-                name = "成交量",
+                name = "转化",
                 items = listOf(
-                    BarEntry("周一", 120f),
-                    BarEntry("周二", -36f),
+                    BarEntry("A", 86f),
+                    BarEntry("B", 132f),
+                    BarEntry("C", 109f),
                 ),
             ),
         )
-        bars {
-            mode = BarMode.GROUPED
-            showValueLabels = true
-            cornerRadius = 4f
-        }
+        bars { barWidthRatio = 0.68f; showValueLabels = true }
     }
-    event { onItemSelected { selection -> /* 原始 BarEntry */ } }
+    event { onItemSelected { selection -> onBarSelected(selection.item) } }
 }
 ```
 
-## 设计要点
+```kotlin
+AreaChart {
+    attr {
+        data(
+            ChartSeries(
+                name = "成交金额",
+                items = listOf(
+                    ChartPoint(1f, 82f, "周一"),
+                    ChartPoint(2f, 108f, "周二"),
+                    ChartPoint(3f, 142f, "周三"),
+                ),
+            ),
+        )
+        line { smooth = true; showPoints = false }
+        area { fillColors = listOf(Color(0x332563EB)) }
+        tooltip { trackerEnabled = true }
+    }
+    event { onItemSelected { selection -> onPointSelected(selection.item) } }
+}
+```
 
-- 所有公共数据、主题、布局语义和 DSL 位于 `commonMain`，不暴露 Android 或浏览器原生类型。
-- 图表使用 Kuikly `Canvas` 绘制，Android 与 H5 共享组件、页面和确定性样本。
-- `NaN` / 无穷值不会导致崩溃：折线非法点形成断线，柱状非法值跳过。
-- 空数据、单值、等值、跨零数据使用安全 domain；轴刻度和命中测试为纯 Kotlin，可自动化回归。
-- H5 遵循“`nativevue2.js` 先注册页面，`h5App.js` 后挂载 Web Render”的官方加载顺序。
-- Kotlin 2.1 的 Android D8/R8 版本已按 [Google 官方兼容矩阵](https://developer.android.com/build/kotlin-support) 固定为 8.6.17。
+```kotlin
+PieChart {
+    attr {
+        seriesName = "渠道订单"
+        data(
+            PieEntry("推荐", 420f),
+            PieEntry("搜索", 260f),
+            PieEntry("直播", 190f),
+            PieEntry("其他", 130f),
+        )
+        pie {
+            innerRadiusRatio = 0.58f
+            gapAngleDegrees = 2f
+            centerLabel = "订单总量"
+        }
+    }
+    event { onItemSelected { selection -> onSliceSelected(selection.item) } }
+}
+```
 
-## 文档导航
+```kotlin
+MixedChart {
+    attr {
+        barData(ChartSeries("实际收入", actualRevenue))
+        lineData(ChartSeries("目标收入", targetRevenue))
+        bars { showValueLabels = false }
+        line { smooth = true; showPoints = true }
+        tooltip { valueFormatter = { value -> "¥${value.toInt()}K" } }
+    }
+    event { onItemSelected { selection -> onMixedSelected(selection) } }
+}
+```
 
-- [完整文档索引](docs/README.md)
-- [需求与验收](docs/01-requirements-and-acceptance.md)
-- [总体技术设计](docs/02-architecture.md)
-- [DSL 规范](docs/03-dsl-specification.md)
-- [公共 API](docs/06-public-api-reference.md)
-- [接入与双端运行](docs/07-integration-and-examples.md)
-- [测试计划](docs/08-test-plan.md)
-- [竞争性交付方案](docs/10-competitive-delivery-plan.md)
-- [M0 实现与验收记录](docs/11-m0-implementation-status.md)
+```kotlin
+SparklineChart {
+    attr {
+        data(ChartSeries("支付成功率", successRatePoints))
+        selectable = true
+        tooltip { enabled = true; valueFormatter = { value -> "$value%" } }
+    }
+    event { onItemSelected { selection -> onRateSelected(selection.item) } }
+}
+```
 
-## P0 验证摘要
+## 项目约束
 
-- 12 个自动化测试，0 failure；
-- Android Debug APK 构建通过；
-- Kotlin/JS 与 H5 production webpack 构建通过；
-- 浏览器 1280×720 首屏实际检测到 2 个 Canvas；
-- 浅/深主题切换通过；
-- 折线末点点击回调与页面反馈通过；
-- 浏览器控制台无运行时 error。
-
-后续里程碑不会把规划能力包装为已完成能力。Tracker、平移/缩放、K 线/成交量和真实股票 Demo 的设计目标保留在规格文档中，并分别按 M1–M3 门禁推进。
+- 公共 API 使用 `commonMain` Kotlin 模型，不能暴露平台原生类型。
+- 相同输入应保持一致的数据域、刻度、命中和回调语义；平台字体与抗锯齿差异可接受。
+- 任何未来扩展都必须同步公共 API/KDoc、示例、自动化测试和平台验证证据。
