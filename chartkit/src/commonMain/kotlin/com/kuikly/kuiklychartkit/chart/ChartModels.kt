@@ -27,6 +27,16 @@ data class BarEntry(
     val value: Float,
 )
 
+/** A labeled non-negative value rendered as one pie or donut slice. */
+data class PieEntry(
+    /** Slice label displayed in the legend and selection feedback. */
+    val label: String,
+    /** Slice magnitude. Only finite values greater than zero are rendered. */
+    val value: Float,
+    /** Optional slice color; null uses the corresponding theme palette color. */
+    val color: Color? = null,
+)
+
 /**
  * A named immutable data series.
  *
@@ -53,6 +63,61 @@ data class ChartSelection<T>(
     /** Original caller-owned immutable item. */
     val item: T,
 )
+
+/** Identifies which renderer produced a [MixedChartSelection]. */
+enum class MixedSeriesType {
+    /** A grouped categorical bar series. */
+    BAR,
+    /** A categorical line series drawn above the bars. */
+    LINE,
+}
+
+/**
+ * A selection from a categorical mixed chart.
+ *
+ * [seriesIndex] is relative to the corresponding bar or line series list,
+ * while [itemIndex] always points to the original item in that series.
+ */
+data class MixedChartSelection(
+    /** Renderer kind that produced this selection. */
+    val seriesType: MixedSeriesType,
+    /** Zero-based index inside the matching bar or line series list. */
+    val seriesIndex: Int,
+    /** Zero-based index in the original series item list. */
+    val itemIndex: Int,
+    /** Name copied from the selected series. */
+    val seriesName: String,
+    /** Original caller-owned categorical item. */
+    val item: BarEntry,
+)
+
+/**
+ * A set of selections sharing one logical X value during an opt-in tracker gesture.
+ *
+ * [x] is a data coordinate, never a platform-specific screen coordinate. The
+ * selections preserve the caller's original series and item indexes.
+ */
+data class ChartTracker<T>(
+    val x: Float,
+    val selections: List<ChartSelection<T>>,
+) {
+    init {
+        require(selections.isNotEmpty()) { "ChartTracker.selections must not be empty" }
+    }
+}
+
+/** A bounded, inclusive item range rendered by an opt-in chart viewport. */
+data class ChartViewport(
+    val startIndex: Int,
+    val endIndex: Int,
+) {
+    init {
+        require(startIndex >= 0) { "ChartViewport.startIndex must be >= 0" }
+        require(endIndex >= startIndex) { "ChartViewport.endIndex must be >= startIndex" }
+    }
+
+    val itemCount: Int get() = endIndex - startIndex + 1
+}
 
 /** Bar grouping policy reserved by the public M0 DSL. */
 enum class BarMode {
@@ -188,15 +253,33 @@ class LegendOptions {
     var visible: Boolean = true
 }
 
-/** Basic click Tooltip options available in M0. */
+/** Click Tooltip options and opt-in tracker settings. */
 class TooltipOptions {
     /** Whether selection guides and Tooltip content are shown after a hit. */
     var enabled: Boolean = true
+    /** Enables the long-press tracker for line and area charts. Disabled by default. */
+    var trackerEnabled: Boolean = false
+    /** Keeps the final tracker position visible after the long press ends. */
+    var keepTrackerOnRelease: Boolean = false
     /** Optional formatter for the selected numeric value. */
     var valueFormatter: ((Float) -> String)? = null
 
     /** Formats [value] with [valueFormatter] or ChartKit's compact default. */
     fun format(value: Float): String = valueFormatter?.invoke(value) ?: formatChartValue(value)
+}
+
+/** Opt-in dense Cartesian browsing options. A zero [visibleItemCount] means all items are visible. */
+class InteractionOptions {
+    /** Enables horizontal panning when the visible window is smaller than the data set. */
+    var enablePan: Boolean = false
+    /** Requested number of items in the line-chart window; zero keeps every item visible. */
+    var visibleItemCount: Int = 0
+    /**
+     * Maximum rendered points per visible series after min/max sampling.
+     *
+     * Zero selects an automatic budget based on the plot width.
+     */
+    var maxRenderPointCount: Int = 0
 }
 
 /** Line renderer appearance options. */
@@ -209,6 +292,32 @@ class LineOptions {
     var lineWidth: Float = 2f
     /** Point marker radius in logical pixels. */
     var pointRadius: Float = 3.5f
+}
+
+/** Area fill options used by [AreaChartAttr]. */
+class AreaOptions {
+    /**
+     * Fill colors selected by series index.
+     *
+     * ARGB colors with a translucent alpha are recommended so grid lines and
+     * overlapping series remain visible. When there are more series than
+     * colors, the list is reused cyclically.
+     */
+    var fillColors: List<Color> = listOf(Color(0x332563EB))
+}
+
+/** Polar geometry and label options used by [PieChartAttr]. */
+class PieOptions {
+    /** `0` renders a pie; values greater than zero render a donut. */
+    var innerRadiusRatio: Float = 0.58f
+    /** Clockwise start angle in degrees; -90 starts at twelve o'clock. */
+    var startAngleDegrees: Float = -90f
+    /** Visual gap between adjacent slices in degrees. */
+    var gapAngleDegrees: Float = 1.5f
+    /** Whether sufficiently large slices display percentage labels. */
+    var showValueLabels: Boolean = true
+    /** Optional text shown in the center of a donut. */
+    var centerLabel: String = ""
 }
 
 /** Bar renderer appearance options. */
