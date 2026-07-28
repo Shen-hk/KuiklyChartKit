@@ -327,7 +327,8 @@ class BarOptions {
     /** Fraction of each category slot available to its bars, in `(0, 1]`. */
     var barWidthRatio: Float = 0.68f
     /** Whether finite values are drawn near each bar. */
-    var showValueLabels: Boolean = true
+    /** Shows the selected bar's value label; all values stay hidden by default. */
+    var showValueLabels: Boolean = false
     /** Requested bar corner radius in logical pixels. */
     var cornerRadius: Float = 4f
 }
