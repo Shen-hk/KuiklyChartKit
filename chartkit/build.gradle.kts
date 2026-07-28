@@ -114,6 +114,13 @@ ksp {
     arg(KEY_PAGE_NAME, getPageName())
 }
 
+// Kuikly 2.7 also adds its processor to the deprecated global `ksp` configuration.
+// In a multiplatform project that makes jsTest generate a second callKotlinMethod entry.
+// Keep the target-specific processors below and leave test compilations entry-point free.
+configurations.named("ksp") {
+    dependencies.clear()
+}
+
 dependencies {
     compileOnly("com.tencent.kuikly-open:core-ksp:${Version.getKuiklyVersion()}") {
         add("kspAndroid", this)
