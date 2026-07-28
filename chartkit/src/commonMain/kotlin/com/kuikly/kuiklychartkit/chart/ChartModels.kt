@@ -232,6 +232,10 @@ class AxisOptions {
     var tickCount: Int = 5
     /** Whether zero must be included when calculating the numeric domain. */
     var includeZero: Boolean = false
+    /** Optional fixed lower bound for the numeric Y-axis domain. */
+    var min: Float? = null
+    /** Optional fixed upper bound for the numeric Y-axis domain. */
+    var max: Float? = null
     /** Optional deterministic numeric label formatter. */
     var labelFormatter: ((Float) -> String)? = null
 

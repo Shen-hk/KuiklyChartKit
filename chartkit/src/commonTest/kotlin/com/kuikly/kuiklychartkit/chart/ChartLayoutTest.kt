@@ -1,5 +1,6 @@
 package com.kuikly.kuiklychartkit.chart
 
+import com.kuikly.kuiklychartkit.chart.interaction.ChartHitTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
