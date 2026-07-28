@@ -21,6 +21,22 @@ internal data class HeatmapLayout(
     val cells: List<RenderedHeatmapCell>,
 )
 
+/**
+ * Staggers cell reveals while guaranteeing every cell reaches its full size
+ * when the chart entrance has completed.
+ */
+internal fun heatmapCellEntranceProgress(
+    entranceProgress: Float,
+    cellIndex: Int,
+    cellCount: Int,
+): Float {
+    val progress = entranceProgress.coerceIn(0f, 1f)
+    val lastIndex = (cellCount - 1).coerceAtLeast(0)
+    if (lastIndex == 0) return progress
+    val delay = cellIndex.coerceIn(0, lastIndex).toFloat() / lastIndex * 0.35f
+    return ((progress - delay) / (1f - delay)).coerceIn(0f, 1f)
+}
+
 /** Deterministic two-dimensional category layout for [HeatmapChart]. */
 internal object HeatmapLayoutEngine {
     fun layout(
@@ -53,13 +69,21 @@ internal object HeatmapLayoutEngine {
             return HeatmapLayout(plot, xLabels, yLabels, emptyList())
         }
 
-        val cellWidth = plot.width / xLabels.size
-        val cellHeight = plot.height / yLabels.size
-        if (cellWidth <= 0f || cellHeight <= 0f) {
+        val cellSize = min(plot.width / xLabels.size, plot.height / yLabels.size)
+        if (cellSize <= 0f) {
             return HeatmapLayout(plot, xLabels, yLabels, emptyList())
         }
 
-        val gap = cellGap.coerceIn(0f, min(cellWidth, cellHeight) * 0.5f)
+        val gridWidth = cellSize * xLabels.size
+        val gridHeight = cellSize * yLabels.size
+        val grid = ChartRect(
+            left = plot.left + (plot.width - gridWidth) / 2f,
+            top = plot.top + (plot.height - gridHeight) / 2f,
+            right = plot.left + (plot.width - gridWidth) / 2f + gridWidth,
+            bottom = plot.top + (plot.height - gridHeight) / 2f + gridHeight,
+        )
+
+        val gap = cellGap.coerceIn(0f, cellSize * 0.5f)
         val minimum = retained.minOf { it.value.value }
         val maximum = retained.maxOf { it.value.value }
         val range = maximum - minimum
@@ -67,15 +91,15 @@ internal object HeatmapLayoutEngine {
             val entry = indexed.value
             val column = xLabels.indexOf(entry.xLabel)
             val row = yLabels.indexOf(entry.yLabel)
-            val left = plot.left + column * cellWidth + gap / 2f
-            val top = plot.top + row * cellHeight + gap / 2f
+            val left = grid.left + column * cellSize + gap / 2f
+            val top = grid.top + row * cellSize + gap / 2f
             val fraction = if (abs(range) < 0.000001f) {
                 0.5f
             } else {
                 ((entry.value - minimum) / range).coerceIn(0f, 1f)
             }
             RenderedHeatmapCell(
-                bounds = ChartRect(left, top, left + cellWidth - gap, top + cellHeight - gap),
+                bounds = ChartRect(left, top, left + cellSize - gap, top + cellSize - gap),
                 fraction = fraction,
                 selection = ChartSelection(
                     seriesIndex = 0,
@@ -85,7 +109,7 @@ internal object HeatmapLayoutEngine {
                 ),
             )
         }
-        return HeatmapLayout(plot, xLabels, yLabels, cells)
+        return HeatmapLayout(grid, xLabels, yLabels, cells)
     }
 }
 
@@ -221,32 +245,6 @@ internal object RadarLayoutEngine {
         gridCount = gridCount,
         series = emptyList(),
     )
-}
-
-/** P2 hit testing uses the exact geometry emitted by the matching layout engine. */
-internal object P2ChartHitTest {
-    fun heatmap(cells: List<RenderedHeatmapCell>, x: Float, y: Float): ChartSelection<HeatmapEntry>? =
-        cells.firstOrNull { it.bounds.contains(x, y) }?.selection
-
-    fun radar(
-        points: List<RenderedRadarPoint>,
-        x: Float,
-        y: Float,
-        radius: Float = 24f,
-    ): ChartSelection<RadarEntry>? {
-        var best: RenderedRadarPoint? = null
-        var bestDistanceSquared = radius * radius
-        points.forEach { point ->
-            val dx = point.x - x
-            val dy = point.y - y
-            val distanceSquared = dx * dx + dy * dy
-            if (distanceSquared <= bestDistanceSquared) {
-                bestDistanceSquared = distanceSquared
-                best = point
-            }
-        }
-        return best?.selection
-    }
 }
 
 /** Pure radial projection shared by the radar gesture and the canvas painter. */

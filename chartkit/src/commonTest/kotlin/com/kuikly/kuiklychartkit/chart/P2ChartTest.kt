@@ -1,5 +1,6 @@
 package com.kuikly.kuiklychartkit.chart
 
+import com.kuikly.kuiklychartkit.chart.interaction.PolarChartHitTest
 import com.tencent.kuikly.core.base.Color
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
@@ -34,6 +35,91 @@ class HeatmapLayoutEngineTest {
     }
 
     @Test
+    fun keepsHeatmapCellsSquareAndCentersTheGrid() {
+        val layout = HeatmapLayoutEngine.layout(
+            plot = ChartRect(0f, 0f, 210f, 110f),
+            entries = listOf(
+                HeatmapEntry("Mon", "AM", 10f),
+                HeatmapEntry("Tue", "AM", 20f),
+                HeatmapEntry("Wed", "AM", 30f),
+                HeatmapEntry("Mon", "PM", 40f),
+                HeatmapEntry("Tue", "PM", 50f),
+                HeatmapEntry("Wed", "PM", 60f),
+            ),
+            seriesName = "activity",
+            cellGap = 4f,
+        )
+
+        assertEquals(22.5f, layout.plot.left, 0.001f)
+        assertEquals(187.5f, layout.plot.right, 0.001f)
+        assertEquals(0f, layout.plot.top, 0.001f)
+        assertEquals(110f, layout.plot.bottom, 0.001f)
+        assertTrue(layout.cells.all { cell -> kotlin.math.abs(cell.bounds.width - cell.bounds.height) < 0.001f })
+        assertEquals(51f, layout.cells.first().bounds.width, 0.001f)
+    }
+
+    @Test
+    fun keepsCellsSquareForDifferentRowAndColumnCounts() {
+        val datasets = listOf(
+            listOf(
+                HeatmapEntry("Mon", "09:00", 1f), HeatmapEntry("Tue", "09:00", 2f),
+                HeatmapEntry("Wed", "09:00", 3f), HeatmapEntry("Thu", "09:00", 4f),
+                HeatmapEntry("Fri", "09:00", 5f),
+                HeatmapEntry("Mon", "18:00", 6f), HeatmapEntry("Tue", "18:00", 7f),
+                HeatmapEntry("Wed", "18:00", 8f), HeatmapEntry("Thu", "18:00", 9f),
+                HeatmapEntry("Fri", "18:00", 10f),
+            ),
+            listOf(
+                HeatmapEntry("Search", "Exposure", 1f), HeatmapEntry("Feed", "Exposure", 2f),
+                HeatmapEntry("Live", "Exposure", 3f), HeatmapEntry("Social", "Exposure", 4f),
+                HeatmapEntry("Search", "Click", 5f), HeatmapEntry("Feed", "Click", 6f),
+                HeatmapEntry("Live", "Click", 7f), HeatmapEntry("Social", "Click", 8f),
+                HeatmapEntry("Search", "Cart", 9f), HeatmapEntry("Feed", "Cart", 10f),
+                HeatmapEntry("Live", "Cart", 11f), HeatmapEntry("Social", "Cart", 12f),
+            ),
+            listOf(
+                HeatmapEntry("N", "Inbound", 1f), HeatmapEntry("E", "Inbound", 2f),
+                HeatmapEntry("S", "Inbound", 3f), HeatmapEntry("W", "Inbound", 4f),
+                HeatmapEntry("T", "Inbound", 5f), HeatmapEntry("F", "Inbound", 6f),
+                HeatmapEntry("N", "Picking", 7f), HeatmapEntry("E", "Picking", 8f),
+                HeatmapEntry("S", "Picking", 9f), HeatmapEntry("W", "Picking", 10f),
+                HeatmapEntry("T", "Picking", 11f), HeatmapEntry("F", "Picking", 12f),
+                HeatmapEntry("N", "Packing", 13f), HeatmapEntry("E", "Packing", 14f),
+                HeatmapEntry("S", "Packing", 15f), HeatmapEntry("W", "Packing", 16f),
+                HeatmapEntry("T", "Packing", 17f), HeatmapEntry("F", "Packing", 18f),
+                HeatmapEntry("N", "Outbound", 19f), HeatmapEntry("E", "Outbound", 20f),
+                HeatmapEntry("S", "Outbound", 21f), HeatmapEntry("W", "Outbound", 22f),
+                HeatmapEntry("T", "Outbound", 23f), HeatmapEntry("F", "Outbound", 24f),
+                HeatmapEntry("N", "Delivered", 25f), HeatmapEntry("E", "Delivered", 26f),
+                HeatmapEntry("S", "Delivered", 27f), HeatmapEntry("W", "Delivered", 28f),
+                HeatmapEntry("T", "Delivered", 29f), HeatmapEntry("F", "Delivered", 30f),
+            ),
+        )
+
+        datasets.forEach { entries ->
+            val layout = HeatmapLayoutEngine.layout(
+                plot = ChartRect(48f, 16f, 346f, 212f),
+                entries = entries,
+                seriesName = "example",
+                cellGap = 4f,
+            )
+
+            assertEquals(entries.size, layout.cells.size)
+            assertTrue(layout.cells.all { cell -> kotlin.math.abs(cell.bounds.width - cell.bounds.height) < 0.001f })
+        }
+    }
+
+    @Test
+    fun heatmapEntranceSettlesEveryCellAtFullSize() {
+        listOf(1, 12, 30).forEach { cellCount ->
+            (0 until cellCount).forEach { index ->
+                assertEquals(1f, heatmapCellEntranceProgress(1f, index, cellCount), 0.001f)
+            }
+        }
+        assertTrue(heatmapCellEntranceProgress(0.2f, 11, 12) < 1f)
+    }
+
+    @Test
     fun equalValuesUseTheMiddleColorBucketAndHitRenderedBounds() {
         val layout = HeatmapLayoutEngine.layout(
             plot = ChartRect(0f, 0f, 160f, 80f),
@@ -47,12 +133,12 @@ class HeatmapLayoutEngineTest {
         val first = layout.cells.first()
 
         assertTrue(layout.cells.all { it.fraction == 0.5f })
-        assertEquals(first.selection, P2ChartHitTest.heatmap(
+        assertEquals(first.selection, PolarChartHitTest.heatmap(
             layout.cells,
             (first.bounds.left + first.bounds.right) / 2f,
             (first.bounds.top + first.bounds.bottom) / 2f,
         ))
-        assertNull(P2ChartHitTest.heatmap(layout.cells, 240f, 120f))
+        assertNull(PolarChartHitTest.heatmap(layout.cells, 240f, 120f))
     }
 }
 
@@ -146,8 +232,8 @@ class RadarLayoutEngineTest {
         assertEquals(listOf(0, 3), points.map { it.selection.itemIndex })
         assertEquals(2, layout.series.single().segments.size)
         assertFalse(layout.series.single().closesPolygon)
-        assertEquals(last.selection, P2ChartHitTest.radar(points, last.x, last.y, radius = 8f))
-        assertNull(P2ChartHitTest.radar(points, 500f, 500f, radius = 8f))
+        assertEquals(last.selection, PolarChartHitTest.radar(points, last.x, last.y, radius = 8f))
+        assertNull(PolarChartHitTest.radar(points, 500f, 500f, radius = 8f))
     }
 
     @Test

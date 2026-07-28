@@ -7,10 +7,12 @@ import com.tencent.kuikly.core.base.ComposeView
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.reactive.handler.observable
-import com.tencent.kuikly.core.timer.Timer
 import com.tencent.kuikly.core.views.Canvas
 import com.tencent.kuikly.core.views.CanvasContext
 import com.tencent.kuikly.core.views.TextAlign
+import com.kuikly.kuiklychartkit.chart.interaction.ChartSelectionState
+import com.kuikly.kuiklychartkit.chart.interaction.PolarChartHitTest
+import com.kuikly.kuiklychartkit.chart.interaction.ChartFrameAnimation
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -157,7 +159,7 @@ class RadarChartEvent : ComposeEvent() {
 
 /** Kuikly ComposeView that renders a two-dimensional category heatmap on [Canvas]. */
 class HeatmapChartView : ComposeView<HeatmapChartAttr, HeatmapChartEvent>() {
-    private var selected: ChartSelection<HeatmapEntry>? by observable(null)
+    private var selectionState: ChartSelectionState<ChartSelection<HeatmapEntry>> by observable(ChartSelectionState())
     private var renderedCells: List<RenderedHeatmapCell> = emptyList()
 
     override fun createAttr() = HeatmapChartAttr()
@@ -170,8 +172,8 @@ class HeatmapChartView : ComposeView<HeatmapChartAttr, HeatmapChartEvent>() {
                 attr { absolutePositionAllZero() }
                 event {
                     click { params ->
-                        val selection = P2ChartHitTest.heatmap(chart.renderedCells, params.x, params.y)
-                        chart.selected = selection
+                        val selection = PolarChartHitTest.heatmap(chart.renderedCells, params.x, params.y)
+                        chart.selectionState = chart.selectionState.select(selection)
                         if (selection != null) chart.event.itemSelectedHandler?.invoke(selection)
                     }
                 }
@@ -181,7 +183,7 @@ class HeatmapChartView : ComposeView<HeatmapChartAttr, HeatmapChartEvent>() {
                     width = width,
                     height = height,
                     attr = chart.attr,
-                    selected = chart.selected,
+                    selected = chart.selectionState.selection,
                 )
             }
         }
@@ -190,11 +192,11 @@ class HeatmapChartView : ComposeView<HeatmapChartAttr, HeatmapChartEvent>() {
 
 /** Kuikly ComposeView that renders multi-series metrics in a shared polar grid. */
 class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
-    private var selected: ChartSelection<RadarEntry>? by observable(null)
+    private var selectionState: ChartSelectionState<ChartSelection<RadarEntry>> by observable(ChartSelectionState())
     private var tracker: RadarTracker? by observable(null)
     private var renderedPoints: List<RenderedRadarPoint> = emptyList()
     private var layout: RadarLayout? = null
-    private var trackerReturnTimer: Timer? = null
+    private val trackerReturnAnimation = ChartFrameAnimation()
 
     override fun createAttr() = RadarChartAttr()
     override fun createEvent() = RadarChartEvent()
@@ -206,8 +208,8 @@ class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
                 attr { absolutePositionAllZero() }
                 event {
                     click { params ->
-                        val selection = P2ChartHitTest.radar(chart.renderedPoints, params.x, params.y)
-                        chart.selected = selection
+                        val selection = PolarChartHitTest.radar(chart.renderedPoints, params.x, params.y)
+                        chart.selectionState = chart.selectionState.select(selection)
                         if (selection != null) chart.event.itemSelectedHandler?.invoke(selection)
                     }
                     longPress { params ->
@@ -225,7 +227,7 @@ class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
                     width = width,
                     height = height,
                     attr = chart.attr,
-                    selected = chart.selected,
+                    selected = chart.selectionState.selection,
                     tracker = chart.tracker,
                 )
                 chart.renderedPoints = rendered.points
@@ -235,7 +237,7 @@ class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
     }
 
     private fun beginTracker(x: Float, y: Float) {
-        val selection = P2ChartHitTest.radar(renderedPoints, x, y) ?: return
+        val selection = PolarChartHitTest.radar(renderedPoints, x, y) ?: return
         val previewValue = RadarTrackerProjection.previewValue(layout ?: return, selection, x, y) ?: return
         cancelTrackerReturn()
         updateTracker(RadarTracker(selection, previewValue))
@@ -269,27 +271,14 @@ class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
             return
         }
 
-        cancelTrackerReturn()
-        var step = 0
-        val frameCount = 10
-        val timer = Timer()
-        trackerReturnTimer = timer
-        timer.schedule(delay = 16, period = 16) {
-            step += 1
-            val progress = (step.toFloat() / frameCount).coerceIn(0f, 1f)
+        trackerReturnAnimation.start(frameCount = 10, onFrame = { progress ->
             val easedProgress = 1f - (1f - progress) * (1f - progress)
             updateTracker(active.copy(previewValue = active.previewValue + (targetValue - active.previewValue) * easedProgress))
-            if (progress >= 1f) {
-                timer.cancel()
-                if (trackerReturnTimer === timer) trackerReturnTimer = null
-                clearTracker()
-            }
-        }
+        }, onFinished = ::clearTracker)
     }
 
     private fun cancelTrackerReturn() {
-        trackerReturnTimer?.cancel()
-        trackerReturnTimer = null
+        trackerReturnAnimation.cancel()
     }
 
     override fun viewDestroyed() {
@@ -395,7 +384,11 @@ private object P2ChartCanvasPainter {
         drawHeatmapLabels(context, layout, attr.theme)
         val colors = resolveHeatmapColorScale(attr.heatmapOptions.colorScale, attr.theme)
         layout.cells.forEachIndexed { index, cell ->
-            val cellProgress = (attr.entranceProgress.coerceIn(0f, 1f) * 1.35f - index * 0.035f).coerceIn(0f, 1f)
+            val cellProgress = heatmapCellEntranceProgress(
+                entranceProgress = attr.entranceProgress,
+                cellIndex = index,
+                cellCount = layout.cells.size,
+            )
             val animatedBounds = scaleRectFromCenter(cell.bounds, cellProgress)
             val colorIndex = (cell.fraction * (colors.size - 1)).roundToInt().coerceIn(0, colors.lastIndex)
             val color = cell.selection.item.color ?: colors[colorIndex]
