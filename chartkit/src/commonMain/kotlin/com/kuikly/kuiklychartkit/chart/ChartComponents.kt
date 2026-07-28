@@ -7,6 +7,7 @@ import com.tencent.kuikly.core.base.ComposeView
 import com.tencent.kuikly.core.base.ViewBuilder
 import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.reactive.handler.observable
+import com.tencent.kuikly.core.timer.Timer
 import com.tencent.kuikly.core.views.Canvas
 import com.tencent.kuikly.core.views.CanvasContext
 import com.tencent.kuikly.core.views.TextAlign
@@ -21,6 +22,9 @@ import kotlin.math.sin
 /** Attribute DSL for [LineChartView]. */
 open class LineChartAttr : ComposeAttr() {
     internal var series: List<ChartSeries<ChartPoint>> by observable(emptyList())
+
+    /** Entry reveal progress supplied by the host, from 0 (hidden) to 1 (complete). */
+    var entranceProgress: Float by observable(1f)
 
     /** Active visual theme. Reassigning it triggers a redraw. */
     var theme: ChartTheme by observable(ChartTheme.light())
@@ -88,6 +92,11 @@ open class LineChartAttr : ComposeAttr() {
             "interaction.maxRenderPointCount must be 0 or >= 4"
         }
     }
+
+    /** Configures the chart-local entry reveal without animating its container. */
+    fun entrance(block: EntranceOptions.() -> Unit) = EntranceOptions(entranceProgress).apply(block).also {
+        entranceProgress = it.progress.coerceIn(0f, 1f)
+    }
 }
 
 /** Attribute DSL for [AreaChartView], sharing the line-chart coordinate and interaction model. */
@@ -132,6 +141,9 @@ class SparklineChartAttr : LineChartAttr() {
 /** Attribute DSL for [BarChartView]. */
 class BarChartAttr : ComposeAttr() {
     internal var series: List<ChartSeries<BarEntry>> by observable(emptyList())
+
+    /** Entry reveal progress supplied by the host, from 0 (hidden) to 1 (complete). */
+    var entranceProgress: Float by observable(1f)
 
     /** Active visual theme. Reassigning it triggers a redraw. */
     var theme: ChartTheme by observable(ChartTheme.light())
@@ -192,11 +204,19 @@ class BarChartAttr : ComposeAttr() {
             "BarMode.SINGLE accepts at most one series"
         }
     }
+
+    /** Configures the chart-local entry reveal without animating its container. */
+    fun entrance(block: EntranceOptions.() -> Unit) = EntranceOptions(entranceProgress).apply(block).also {
+        entranceProgress = it.progress.coerceIn(0f, 1f)
+    }
 }
 
 /** Attribute DSL for [PieChartView]. */
 class PieChartAttr : ComposeAttr() {
     internal var entries: List<PieEntry> by observable(emptyList())
+
+    /** Entry reveal progress supplied by the host, from 0 (hidden) to 1 (complete). */
+    var entranceProgress: Float by observable(1f)
 
     /** Stable series name returned in selection callbacks. */
     var seriesName: String by observable("数据占比")
@@ -236,12 +256,20 @@ class PieChartAttr : ComposeAttr() {
             "pie.gapAngleDegrees must be in [0, 10]"
         }
     }
+
+    /** Configures the chart-local entry reveal without animating its container. */
+    fun entrance(block: EntranceOptions.() -> Unit) = EntranceOptions(entranceProgress).apply(block).also {
+        entranceProgress = it.progress.coerceIn(0f, 1f)
+    }
 }
 
 /** Attribute DSL for [MixedChartView]. */
 class MixedChartAttr : ComposeAttr() {
     internal var barSeries: List<ChartSeries<BarEntry>> by observable(emptyList())
     internal var lineSeries: List<ChartSeries<BarEntry>> by observable(emptyList())
+
+    /** Entry reveal progress supplied by the host, from 0 (hidden) to 1 (complete). */
+    var entranceProgress: Float by observable(1f)
 
     /** Active visual theme. Reassigning it triggers a redraw. */
     var theme: ChartTheme by observable(ChartTheme.light())
@@ -318,6 +346,16 @@ class MixedChartAttr : ComposeAttr() {
         require(lineOptions.lineWidth > 0f) { "line.lineWidth must be > 0" }
         require(lineOptions.pointRadius >= 0f) { "line.pointRadius must be >= 0" }
     }
+
+    /** Configures the chart-local entry reveal without animating its container. */
+    fun entrance(block: EntranceOptions.() -> Unit) = EntranceOptions(entranceProgress).apply(block).also {
+        entranceProgress = it.progress.coerceIn(0f, 1f)
+    }
+}
+
+/** Mutable entry-animation configuration shared by every chart renderer. */
+class EntranceOptions(initialProgress: Float) {
+    var progress: Float = initialProgress
 }
 
 private fun AxisOptions.applyValidated(block: AxisOptions.() -> Unit): AxisOptions {
@@ -566,7 +604,9 @@ class BarChartView : ComposeView<BarChartAttr, BarChartEvent>() {
  */
 class PieChartView : ComposeView<PieChartAttr, PieChartEvent>() {
     private var selected: ChartSelection<PieEntry>? by observable(null)
+    private var selectionProgress: Float by observable(0f)
     private var renderedSlices: List<RenderedPieSlice> = emptyList()
+    private var selectionTimer: Timer? = null
 
     override fun createAttr() = PieChartAttr()
     override fun createEvent() = PieChartEvent()
@@ -580,7 +620,13 @@ class PieChartView : ComposeView<PieChartAttr, PieChartEvent>() {
                     click { params ->
                         val selection = ChartHitTest.pie(chart.renderedSlices, params.x, params.y)
                         chart.selected = selection
-                        if (selection != null) chart.event.itemSelectedHandler?.invoke(selection)
+                        if (selection != null) {
+                            chart.animateSelection()
+                            chart.event.itemSelectedHandler?.invoke(selection)
+                        } else {
+                            chart.cancelSelectionAnimation()
+                            chart.selectionProgress = 0f
+                        }
                     }
                 }
             }) { context, width, height ->
@@ -590,9 +636,38 @@ class PieChartView : ComposeView<PieChartAttr, PieChartEvent>() {
                     height = height,
                     attr = chart.attr,
                     selected = chart.selected,
+                    selectionProgress = chart.selectionProgress,
                 )
             }
         }
+    }
+
+    private fun animateSelection() {
+        cancelSelectionAnimation()
+        selectionProgress = 0f
+        var frame = 0
+        val frameCount = 9
+        val timer = Timer()
+        selectionTimer = timer
+        timer.schedule(delay = 16, period = 16) {
+            frame += 1
+            val linear = (frame.toFloat() / frameCount).coerceIn(0f, 1f)
+            selectionProgress = 1f - (1f - linear) * (1f - linear)
+            if (linear >= 1f) {
+                timer.cancel()
+                if (selectionTimer === timer) selectionTimer = null
+            }
+        }
+    }
+
+    private fun cancelSelectionAnimation() {
+        selectionTimer?.cancel()
+        selectionTimer = null
+    }
+
+    override fun viewDestroyed() {
+        cancelSelectionAnimation()
+        super.viewDestroyed()
     }
 }
 
@@ -725,6 +800,7 @@ private object ChartCanvasPainter {
         if (attr.legendOptions.visible) drawLegend(context, sourceSeries, attr.theme, width)
 
         val rendered = mutableListOf<RenderedLinePoint>()
+        val revealX = layout.plot.left + layout.plot.width * attr.entranceProgress.coerceIn(0f, 1f)
         sourceSeries.forEachIndexed { seriesIndex, series ->
             val color = series.color ?: attr.theme.palette[seriesIndex % attr.theme.palette.size]
             val rawSegments = mutableListOf<MutableList<IndexedValue<ChartPoint>>>()
@@ -756,21 +832,25 @@ private object ChartCanvasPainter {
                 }
             }
             segments.forEach { segment ->
+                val visibleSegment = revealLineSegment(segment, revealX)
+                if (visibleSegment.isEmpty()) return@forEach
                 if (areaOptions != null) {
                     val fillColor = areaOptions.fillColors[seriesIndex % areaOptions.fillColors.size]
                     drawAreaPath(
                         context = context,
-                        points = segment,
+                        points = visibleSegment,
                         baselineY = layout.yFor(0f).coerceIn(layout.plot.top, layout.plot.bottom),
                         color = fillColor,
                         options = attr.lineOptions,
                     )
                 }
-                drawLinePath(context, segment, color, attr.lineOptions)
+                drawLinePath(context, visibleSegment, color, attr.lineOptions)
             }
             val points = segments.flatten()
             if (attr.lineOptions.showPoints) {
-                points.forEach { drawCircle(context, it.x, it.y, attr.lineOptions.pointRadius, color) }
+                points.filter { it.x <= revealX }.forEach {
+                    drawCircle(context, it.x, it.y, attr.lineOptions.pointRadius, color)
+                }
             }
             rendered += points
         }
@@ -875,10 +955,11 @@ private object ChartCanvasPainter {
                 if (!entry.value.isFinite() || itemIndex >= layout.categoryCount) return@forEachIndexed
                 val groupLeft = layout.categoryCenter(itemIndex) - groupWidth / 2f
                 val valueY = layout.yFor(entry.value).coerceIn(layout.plot.top, layout.plot.bottom)
+                val animatedValueY = zeroY + (valueY - zeroY) * attr.entranceProgress.coerceIn(0f, 1f)
                 val left = groupLeft + seriesIndex * barWidth + 1f
                 val right = groupLeft + (seriesIndex + 1) * barWidth - 1f
-                val top = min(zeroY, valueY)
-                val bottom = max(zeroY, valueY).coerceAtLeast(top + 1f)
+                val top = min(zeroY, animatedValueY)
+                val bottom = max(zeroY, animatedValueY).coerceAtLeast(top + 1f)
                 val bounds = ChartRect(left, top, right, bottom)
                 fillRoundedRect(context, bounds, attr.barOptions.cornerRadius, color)
                 val selection = ChartSelection(seriesIndex, itemIndex, series.name, entry)
@@ -914,6 +995,7 @@ private object ChartCanvasPainter {
         height: Float,
         attr: PieChartAttr,
         selected: ChartSelection<PieEntry>?,
+        selectionProgress: Float,
     ): List<RenderedPieSlice> {
         fillRect(context, ChartRect(0f, 0f, width, height), attr.theme.backgroundColor)
         val slices = PieLayoutEngine.layout(
@@ -947,14 +1029,22 @@ private object ChartCanvasPainter {
             )
         }
 
+        val startAngle = slices.first().startAngle
+        val revealAngle = startAngle + (PI.toFloat() * 2f) * attr.entranceProgress.coerceIn(0f, 1f)
         slices.forEach { slice ->
+            val visibleSlice = revealPieSlice(slice, revealAngle) ?: return@forEach
+            val displaySlice = if (slice.selection == selected) {
+                expandPieSlice(visibleSlice, selectionProgress)
+            } else {
+                visibleSlice
+            }
             val color = slice.selection.item.color
                 ?: attr.theme.palette[slice.selection.itemIndex % attr.theme.palette.size]
-            drawPieSlice(context, slice, color, fill = true)
-            if (attr.pieOptions.showValueLabels && slice.fraction >= 0.06f) {
-                val labelRadius = (slice.innerRadius + slice.outerRadius) / 2f
-                val labelX = slice.centerX + cos(slice.middleAngle.toDouble()).toFloat() * labelRadius
-                val labelY = slice.centerY + sin(slice.middleAngle.toDouble()).toFloat() * labelRadius
+            drawPieSlice(context, displaySlice, color, fill = true)
+            if (attr.pieOptions.showValueLabels && slice.endAngle <= revealAngle && slice.fraction >= 0.06f) {
+                val labelRadius = (displaySlice.innerRadius + displaySlice.outerRadius) / 2f
+                val labelX = displaySlice.centerX + cos(displaySlice.middleAngle.toDouble()).toFloat() * labelRadius
+                val labelY = displaySlice.centerY + sin(displaySlice.middleAngle.toDouble()).toFloat() * labelRadius
                 context.font(10f)
                 context.textAlign(TextAlign.CENTER)
                 context.fillStyle(attr.theme.tooltipTextColor)
@@ -962,7 +1052,7 @@ private object ChartCanvasPainter {
             }
         }
 
-        if (attr.pieOptions.innerRadiusRatio > 0f) {
+        if (attr.pieOptions.innerRadiusRatio > 0f && attr.entranceProgress >= 0.92f) {
             val first = slices.first()
             context.textAlign(TextAlign.CENTER)
             context.fillStyle(attr.theme.labelColor)
@@ -976,11 +1066,12 @@ private object ChartCanvasPainter {
 
         selected?.let { selection ->
             slices.firstOrNull { it.selection == selection }?.let { slice ->
-                drawPieSlice(context, slice, attr.theme.selectionColor, fill = false)
+                val displaySlice = expandPieSlice(slice, selectionProgress)
+                drawPieSlice(context, displaySlice, attr.theme.selectionColor, fill = false)
                 if (attr.tooltipOptions.enabled) {
-                    val anchorRadius = (slice.innerRadius + slice.outerRadius) / 2f
-                    val anchorX = slice.centerX + cos(slice.middleAngle.toDouble()).toFloat() * anchorRadius
-                    val anchorY = slice.centerY + sin(slice.middleAngle.toDouble()).toFloat() * anchorRadius
+                    val anchorRadius = (displaySlice.innerRadius + displaySlice.outerRadius) / 2f
+                    val anchorX = displaySlice.centerX + cos(displaySlice.middleAngle.toDouble()).toFloat() * anchorRadius
+                    val anchorY = displaySlice.centerY + sin(displaySlice.middleAngle.toDouble()).toFloat() * anchorRadius
                     drawTooltip(
                         context = context,
                         width = width,
@@ -1065,10 +1156,12 @@ private object ChartCanvasPainter {
                 if (!entry.value.isFinite() || itemIndex >= layout.categoryCount) return@forEachIndexed
                 val groupLeft = layout.categoryCenter(itemIndex) - groupWidth / 2f
                 val valueY = layout.yFor(entry.value).coerceIn(layout.plot.top, layout.plot.bottom)
+                val barProgress = (attr.entranceProgress.coerceIn(0f, 1f) / 0.62f).coerceIn(0f, 1f)
+                val animatedValueY = zeroY + (valueY - zeroY) * barProgress
                 val left = groupLeft + seriesIndex * barWidth + 1f
                 val right = groupLeft + (seriesIndex + 1) * barWidth - 1f
-                val top = min(zeroY, valueY)
-                val bottom = max(zeroY, valueY).coerceAtLeast(top + 1f)
+                val top = min(zeroY, animatedValueY)
+                val bottom = max(zeroY, animatedValueY).coerceAtLeast(top + 1f)
                 val bounds = ChartRect(left, top, right, bottom)
                 fillRoundedRect(context, bounds, attr.barOptions.cornerRadius, color)
                 renderedBars += RenderedMixedBar(
@@ -1096,6 +1189,8 @@ private object ChartCanvasPainter {
         }
 
         val renderedLinePoints = mutableListOf<RenderedMixedLinePoint>()
+        val lineRevealProgress = ((attr.entranceProgress.coerceIn(0f, 1f) - 0.35f) / 0.65f).coerceIn(0f, 1f)
+        val lineRevealX = layout.plot.left + layout.plot.width * lineRevealProgress
         attr.lineSeries.forEachIndexed { seriesIndex, series ->
             val paletteIndex = attr.barSeries.size + seriesIndex
             val color = series.color ?: attr.theme.palette[paletteIndex % attr.theme.palette.size]
@@ -1120,10 +1215,15 @@ private object ChartCanvasPainter {
                 }
             }
             if (segment.isNotEmpty()) segments += segment
-            segments.forEach { drawMixedLinePath(context, it, color, attr.lineOptions) }
+            segments.forEach { segment ->
+                val visibleSegment = revealMixedLineSegment(segment, lineRevealX)
+                if (visibleSegment.isNotEmpty()) drawMixedLinePath(context, visibleSegment, color, attr.lineOptions)
+            }
             val points = segments.flatten()
             if (attr.lineOptions.showPoints) {
-                points.forEach { drawCircle(context, it.x, it.y, attr.lineOptions.pointRadius, color) }
+                points.filter { it.x <= lineRevealX }.forEach {
+                    drawCircle(context, it.x, it.y, attr.lineOptions.pointRadius, color)
+                }
             }
             renderedLinePoints += points
         }
@@ -1369,6 +1469,55 @@ private object ChartCanvasPainter {
             context.lineWidth(3f)
             context.stroke()
         }
+    }
+
+    /** Reveals a Cartesian segment from left to right, including an interpolated leading edge. */
+    private fun revealLineSegment(
+        points: List<RenderedLinePoint>,
+        revealX: Float,
+    ): List<RenderedLinePoint> {
+        if (points.isEmpty() || revealX < points.first().x) return emptyList()
+        if (revealX >= points.last().x) return points
+        val visible = points.takeWhile { it.x <= revealX }.toMutableList()
+        val next = points.getOrNull(visible.size) ?: return visible
+        val previous = visible.lastOrNull() ?: return emptyList()
+        val fraction = ((revealX - previous.x) / (next.x - previous.x)).coerceIn(0f, 1f)
+        visible += previous.copy(y = previous.y + (next.y - previous.y) * fraction, x = revealX)
+        return visible
+    }
+
+    /** Reveals a mixed-chart line from left to right, including an interpolated leading edge. */
+    private fun revealMixedLineSegment(
+        points: List<RenderedMixedLinePoint>,
+        revealX: Float,
+    ): List<RenderedMixedLinePoint> {
+        if (points.isEmpty() || revealX < points.first().x) return emptyList()
+        if (revealX >= points.last().x) return points
+        val visible = points.takeWhile { it.x <= revealX }.toMutableList()
+        val next = points.getOrNull(visible.size) ?: return visible
+        val previous = visible.lastOrNull() ?: return emptyList()
+        val fraction = ((revealX - previous.x) / (next.x - previous.x)).coerceIn(0f, 1f)
+        visible += previous.copy(y = previous.y + (next.y - previous.y) * fraction, x = revealX)
+        return visible
+    }
+
+    /** Clips the aggregate pie sweep at the current radial reveal angle. */
+    private fun revealPieSlice(slice: RenderedPieSlice, revealAngle: Float): RenderedPieSlice? {
+        if (revealAngle <= slice.startAngle) return null
+        return slice.copy(endAngle = min(slice.endAngle, revealAngle))
+    }
+
+    /** Pops the selected slice outward along its middle angle and gives it a small emphasis scale. */
+    private fun expandPieSlice(slice: RenderedPieSlice, progress: Float): RenderedPieSlice {
+        val emphasis = progress.coerceIn(0f, 1f)
+        val offset = 10f * emphasis
+        val radiusScale = 1f + 0.055f * emphasis
+        return slice.copy(
+            centerX = slice.centerX + cos(slice.middleAngle.toDouble()).toFloat() * offset,
+            centerY = slice.centerY + sin(slice.middleAngle.toDouble()).toFloat() * offset,
+            innerRadius = slice.innerRadius * radiusScale,
+            outerRadius = slice.outerRadius * radiusScale,
+        )
     }
 
     private fun drawMixedLinePath(

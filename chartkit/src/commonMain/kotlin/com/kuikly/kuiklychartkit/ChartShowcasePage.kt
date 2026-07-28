@@ -7,21 +7,31 @@ import com.kuikly.kuiklychartkit.chart.BarEntry
 import com.kuikly.kuiklychartkit.chart.ChartPoint
 import com.kuikly.kuiklychartkit.chart.ChartSeries
 import com.kuikly.kuiklychartkit.chart.ChartTheme
+import com.kuikly.kuiklychartkit.chart.HeatmapChart
+import com.kuikly.kuiklychartkit.chart.HeatmapEntry
 import com.kuikly.kuiklychartkit.chart.LineChart
 import com.kuikly.kuiklychartkit.chart.LineSampler
 import com.kuikly.kuiklychartkit.chart.MixedChart
 import com.kuikly.kuiklychartkit.chart.MixedSeriesType
 import com.kuikly.kuiklychartkit.chart.PieChart
 import com.kuikly.kuiklychartkit.chart.PieEntry
+import com.kuikly.kuiklychartkit.chart.RadarChart
+import com.kuikly.kuiklychartkit.chart.RadarEntry
 import com.kuikly.kuiklychartkit.chart.SparklineChart
+import com.kuikly.kuiklychartkit.chart.defaultHeatmapColorScale
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.base.Color
+import com.tencent.kuikly.core.base.ColorStop
+import com.tencent.kuikly.core.base.Direction
 import com.tencent.kuikly.core.base.ViewBuilder
+import com.tencent.kuikly.core.base.ViewContainer
 import com.tencent.kuikly.core.reactive.handler.observable
+import com.tencent.kuikly.core.timer.Timer
 import com.tencent.kuikly.core.views.Scroller
 import com.tencent.kuikly.core.views.Text
 import com.tencent.kuikly.core.views.View
 import com.tencent.kuikly.core.views.compose.Button
+import kotlin.random.Random
 
 private const val CHART_SHOWCASE_PAGE = "chart_showcase"
 
@@ -46,6 +56,58 @@ private fun formatPointCount(pointCount: Int): String = when (pointCount) {
     else -> pointCount.toString()
 }
 
+private fun ViewContainer<*, *>.ShowcaseChartControls(
+    accent: Color,
+    elevatedBackground: Color,
+    primaryText: Color,
+    onEntranceRefresh: () -> Unit,
+    onDataUpdate: () -> Unit,
+) {
+    View {
+        attr {
+            flexDirectionRow()
+            marginBottom(10f)
+        }
+        Button {
+            attr {
+                size(88f, 32f)
+                borderRadius(16f)
+                backgroundColor(elevatedBackground)
+                marginRight(8f)
+                titleAttr {
+                    text("入场刷新")
+                    fontSize(12f)
+                    color(primaryText)
+                }
+            }
+            event { click { onEntranceRefresh() } }
+        }
+        Button {
+            attr {
+                size(88f, 32f)
+                borderRadius(16f)
+                backgroundColor(accent)
+                titleAttr {
+                    text("数据更新")
+                    fontSize(12f)
+                    color(Color.WHITE)
+                }
+            }
+            event { click { onDataUpdate() } }
+        }
+    }
+}
+
+private fun ViewContainer<*, *>.ShowcaseChartEntrance(
+    page: ChartShowcasePage,
+    chartKey: String,
+    content: ViewContainer<*, *>.() -> Unit,
+) {
+    View {
+        content()
+    }
+}
+
 @Page(CHART_SHOWCASE_PAGE, supportInLocal = true)
 internal class ChartShowcasePage : BasePager() {
     private val performanceDataSets = listOf(100, 1_000, 5_000).associateWith(::buildPerformancePoints)
@@ -60,6 +122,10 @@ internal class ChartShowcasePage : BasePager() {
     private var areaFeedbackText by observable("点击或长按面积边界，查看每日成交金额。")
     private var pieFeedbackTitle by observable("等待饼环图交互")
     private var pieFeedbackText by observable("点击任意扇区查看渠道订单量与占比。")
+    private var heatmapFeedbackTitle by observable("等待热力图交互")
+    private var heatmapFeedbackText by observable("点击任意时段单元格查看原始热度值。")
+    private var radarFeedbackTitle by observable("等待雷达图交互")
+    private var radarFeedbackText by observable("点击能力维度顶点，比较当前表现与目标。")
     private var mixedFeedbackTitle by observable("等待组合图交互")
     private var mixedFeedbackText by observable("点击柱体或折线点，比较实际收入与目标收入。")
     private var sparklineFeedbackTitle by observable("等待紧凑趋势交互")
@@ -70,41 +136,251 @@ internal class ChartShowcasePage : BasePager() {
     private var categoryFeedbackTitle by observable("等待分类交互")
     private var categoryFeedbackText by observable("点击柱体查看本月与上月的原始订单量。")
 
+    private var chartControlRevision by observable(0)
+    private val chartDataVersions = mutableMapOf<String, Int>()
+    private val chartDataSeeds = mutableMapOf<String, Int>()
+    private val chartEntranceProgress = mutableMapOf<String, Float>()
+    private val chartEntranceTimers = mutableMapOf<String, Timer>()
+
+    private val isH5Showcase: Boolean
+        get() = pageData.params.optString("is_H5") == "1"
+
+    override fun created() {
+        super.created()
+        if (isH5Showcase) {
+            themeMode = ShowcaseThemeMode.DARK
+        }
+    }
+
+    internal fun chartEntranceProgress(chartKey: String): Float {
+        chartControlRevision
+        return chartEntranceProgress[chartKey] ?: 1f
+    }
+
+    private fun refreshChartEntrance(chartKey: String) {
+        chartEntranceTimers.remove(chartKey)?.cancel()
+        chartEntranceProgress[chartKey] = 0f
+        chartControlRevision += 1
+        var frame = 0
+        val totalFrames = 16
+        val timer = Timer()
+        chartEntranceTimers[chartKey] = timer
+        timer.schedule(delay = 16, period = 16) {
+            frame += 1
+            val linear = (frame.toFloat() / totalFrames).coerceIn(0f, 1f)
+            chartEntranceProgress[chartKey] = 1f - (1f - linear) * (1f - linear)
+            chartControlRevision += 1
+            if (linear >= 1f) {
+                timer.cancel()
+                if (chartEntranceTimers[chartKey] === timer) chartEntranceTimers.remove(chartKey)
+            }
+        }
+    }
+
+    private fun refreshChartData(chartKey: String) {
+        chartDataVersions[chartKey] = (chartDataVersions[chartKey] ?: 0) + 1
+        chartDataSeeds[chartKey] = Random.nextInt()
+        refreshChartEntrance(chartKey)
+    }
+
+    private fun refreshedChartValue(chartKey: String, base: Float, index: Int): Float {
+        if (!base.isFinite()) return base
+        if ((chartDataVersions[chartKey] ?: 0) == 0) return base
+        val seed = chartDataSeeds[chartKey] ?: 0
+        var mixed = seed xor (index * 0x45D9F3B)
+        mixed = mixed xor (mixed ushr 16)
+        mixed *= 0x45D9F3B
+        mixed = mixed xor (mixed ushr 16)
+        val fraction = ((mixed ushr 8) and 0xFFFF).toFloat() / 65535f
+        val (minimum, maximum) = when (chartKey) {
+            "performance" -> 120f to 260f
+            "invalid-line" -> 20f to 80f
+            "sparkline" -> 92f to 100f
+            "mixed" -> 60f to 180f
+            "pie" -> 90f to 440f
+            "heatmap" -> 20f to 100f
+            "radar" -> 45f to 100f
+            "area" -> 70f to 250f
+            "trend" -> 80f to 330f
+            "bar" -> 120f to 320f
+            else -> 0f to base.coerceAtLeast(1f)
+        }
+        return minimum + (maximum - minimum) * fraction
+    }
+
+    private fun pieTotal(): Float =
+        refreshedChartValue("pie", 420f, 0) +
+            refreshedChartValue("pie", 260f, 1) +
+            refreshedChartValue("pie", 190f, 2) +
+            refreshedChartValue("pie", 130f, 3)
+
+    override fun viewDestroyed() {
+        chartEntranceTimers.values.forEach { it.cancel() }
+        chartEntranceTimers.clear()
+        super.viewDestroyed()
+    }
+
     override fun body(): ViewBuilder {
         val page = this
-        val isDark = themeMode == ShowcaseThemeMode.DARK
-        val pageBackground = if (isDark) Color(0xFF0B1220) else Color(0xFFF3F6FB)
+        val isH5 = isH5Showcase
+        val activeThemeMode = if (isH5 && themeMode == ShowcaseThemeMode.LIGHT) {
+            ShowcaseThemeMode.DARK
+        } else {
+            themeMode
+        }
+        val isDark = activeThemeMode == ShowcaseThemeMode.DARK
+        val pageBackground = if (isDark) {
+            if (isH5) Color(0xFF071423) else Color(0xFF0B1220)
+        } else {
+            Color(0xFFF3F6FB)
+        }
         val cardBackground = if (isDark) Color(0xFF111C2E) else Color.WHITE
         val elevatedBackground = if (isDark) Color(0xFF17263D) else Color(0xFFEAF2FF)
         val primaryText = if (isDark) Color(0xFFF8FAFC) else Color(0xFF172033)
         val secondaryText = if (isDark) Color(0xFFAAB7C9) else Color(0xFF687386)
-        val accent = when (themeMode) {
+        val accent = when (activeThemeMode) {
             ShowcaseThemeMode.LIGHT -> Color(0xFF2563EB)
-            ShowcaseThemeMode.DARK -> Color(0xFF60A5FA)
+            ShowcaseThemeMode.DARK -> if (isH5) Color(0xFF2DD4BF) else Color(0xFF60A5FA)
             ShowcaseThemeMode.OCEAN -> Color(0xFF0284C7)
             ShowcaseThemeMode.SUNSET -> Color(0xFFF97316)
         }
-        val accentSoft = when (themeMode) {
+        val accentSoft = when (activeThemeMode) {
             ShowcaseThemeMode.LIGHT -> Color(0xFFE8F0FF)
-            ShowcaseThemeMode.DARK -> Color(0xFF203452)
+            ShowcaseThemeMode.DARK -> if (isH5) Color(0xFF123745) else Color(0xFF203452)
             ShowcaseThemeMode.OCEAN -> Color(0xFFE0F5FE)
             ShowcaseThemeMode.SUNSET -> Color(0xFFFFEDE3)
         }
-        val chartTheme = when (themeMode) {
+        val chartTheme = when (activeThemeMode) {
             ShowcaseThemeMode.LIGHT -> ChartTheme.light()
             ShowcaseThemeMode.DARK -> ChartTheme.dark()
             ShowcaseThemeMode.OCEAN -> ChartTheme.ocean()
             ShowcaseThemeMode.SUNSET -> ChartTheme.sunset()
         }
+        val heatmapColorScale = defaultHeatmapColorScale(chartTheme)
         return {
             attr { backgroundColor(pageBackground) }
-            RouterNavBar {
-                attr { title = "KuiklyChartKit Showcase" }
+            if (!isH5) {
+                RouterNavBar {
+                    attr { title = "KuiklyChartKit Showcase" }
+                }
             }
             Scroller {
                 attr {
                     flex(1f)
                     padding(16f)
+                }
+
+                if (isH5) {
+                    View {
+                        attr {
+                            borderRadius(22f)
+                            padding(22f)
+                            marginBottom(14f)
+                            backgroundLinearGradient(
+                                Direction.TO_BOTTOM,
+                                ColorStop(Color(0xFF12364A), 0f),
+                                ColorStop(Color(0xFF0D1E34), 0.58f),
+                                ColorStop(Color(0xFF101A2C), 1f),
+                            )
+                        }
+                        Text {
+                            attr {
+                                text("Kuikly ChartKit / 数据工作台")
+                                fontSize(25f)
+                                fontWeightBold()
+                                color(Color(0xFFF0FDFA))
+                            }
+                        }
+                        Text {
+                            attr {
+                                text("真实 Kotlin DSL、Canvas 渲染与交互回调，在同一份 H5 演示中完成趋势、性能与决策视图验证。")
+                                fontSize(13f)
+                                color(Color(0xFFB9D4DE))
+                                marginTop(8f)
+                            }
+                        }
+                        View {
+                            attr {
+                                flexDirectionRow()
+                                marginTop(20f)
+                            }
+                            View {
+                                attr {
+                                    flex(1f)
+                                    backgroundColor(Color(0x2A38BDF8))
+                                    borderRadius(12f)
+                                    padding(10f)
+                                    marginRight(6f)
+                                }
+                                Text { attr { text("9"); fontSize(21f); fontWeightBold(); color(Color(0xFF7DD3FC)) } }
+                                Text { attr { text("真实演示"); fontSize(10f); color(Color(0xFFB7D3E4)); marginTop(2f) } }
+                            }
+                            View {
+                                attr {
+                                    flex(1f)
+                                    backgroundColor(Color(0x2A2DD4BF))
+                                    borderRadius(12f)
+                                    padding(10f)
+                                    marginRight(6f)
+                                }
+                                Text { attr { text("3"); fontSize(21f); fontWeightBold(); color(Color(0xFF5EEAD4)) } }
+                                Text { attr { text("目标平台"); fontSize(10f); color(Color(0xFFB7D3E4)); marginTop(2f) } }
+                            }
+                            View {
+                                attr {
+                                    flex(1f)
+                                    backgroundColor(Color(0x2AFBBF24))
+                                    borderRadius(12f)
+                                    padding(10f)
+                                    marginRight(6f)
+                                }
+                                Text { attr { text("4"); fontSize(21f); fontWeightBold(); color(Color(0xFFFDE68A)) } }
+                                Text { attr { text("视觉主题"); fontSize(10f); color(Color(0xFFB7D3E4)); marginTop(2f) } }
+                            }
+                            View {
+                                attr {
+                                    flex(1f)
+                                    backgroundColor(Color(0x2AA78BFA))
+                                    borderRadius(12f)
+                                    padding(10f)
+                                }
+                                Text { attr { text("P2"); fontSize(21f); fontWeightBold(); color(Color(0xFFC4B5FD)) } }
+                                Text { attr { text("当前阶段"); fontSize(10f); color(Color(0xFFB7D3E4)); marginTop(2f) } }
+                            }
+                        }
+                        View {
+                            attr {
+                                flexDirectionRow()
+                                marginTop(16f)
+                            }
+                            View {
+                                attr {
+                                    backgroundColor(Color(0x332DD4BF))
+                                    borderRadius(10f)
+                                    padding(7f)
+                                    marginRight(7f)
+                                }
+                                Text { attr { text("Canvas Runtime"); fontSize(10f); color(Color(0xFFCCFBF1)) } }
+                            }
+                            View {
+                                attr {
+                                    backgroundColor(Color(0x3338BDF8))
+                                    borderRadius(10f)
+                                    padding(7f)
+                                    marginRight(7f)
+                                }
+                                Text { attr { text("交互可验证"); fontSize(10f); color(Color(0xFFE0F2FE)) } }
+                            }
+                            View {
+                                attr {
+                                    backgroundColor(Color(0x33FBBF24))
+                                    borderRadius(10f)
+                                    padding(7f)
+                                }
+                                Text { attr { text("P0 - P2"); fontSize(10f); color(Color(0xFFFEF3C7)) } }
+                            }
+                        }
+                    }
                 }
 
                 // Product introduction and the primary entry point for the rest of the page.
@@ -140,7 +416,7 @@ internal class ChartShowcasePage : BasePager() {
                         }
                         Text {
                             attr {
-                                text("当前展台包含 Sparkline、折线、面积、饼环、组合、分类对比和密集数据浏览；所有示例均由真实 DSL 渲染。")
+                            text("当前展台包含 Sparkline、折线、面积、饼环、热力、雷达、组合、分类对比和密集数据浏览；所有示例均由真实 DSL 渲染。")
                                 fontSize(12f)
                                 color(accent)
                             }
@@ -258,14 +534,25 @@ internal class ChartShowcasePage : BasePager() {
                             }
                         }
                     }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("performance") },
+                        onDataUpdate = { page.refreshChartData("performance") },
+                    )
+                    ShowcaseChartEntrance(page, "performance") {
                     LineChart {
                         attr {
                             height(220f)
                             theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("performance") }
                             data(
                                 ChartSeries(
                                     "密集趋势",
-                                    page.performanceDataSets.getValue(page.performancePointCount),
+                                    page.performanceDataSets.getValue(page.performancePointCount).mapIndexed { index, point ->
+                                        point.copy(y = page.refreshedChartValue("performance", point.y, index))
+                                    },
                                 ),
                             )
                             xAxis { visible = false }
@@ -282,6 +569,7 @@ internal class ChartShowcasePage : BasePager() {
                                     "${it.item.label} · 数值 ${it.item.y} · 回调索引 ${it.itemIndex}"
                             }
                         }
+                    }
                     }
                 }
 
@@ -309,10 +597,19 @@ internal class ChartShowcasePage : BasePager() {
                             marginBottom(8f)
                         }
                     }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("invalid-line") },
+                        onDataUpdate = { page.refreshChartData("invalid-line") },
+                    )
+                    ShowcaseChartEntrance(page, "invalid-line") {
                     LineChart {
                         attr {
                             height(180f)
                             theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("invalid-line") }
                             data(
                                 ChartSeries(
                                     name = "边界数据",
@@ -324,7 +621,9 @@ internal class ChartShowcasePage : BasePager() {
                                         ChartPoint(5f, Float.POSITIVE_INFINITY, "Infinity"),
                                         ChartPoint(6f, 56f, "D"),
                                         ChartPoint(7f, 63f, "E"),
-                                    ),
+                                    ).mapIndexed { index, point ->
+                                        point.copy(y = page.refreshedChartValue("invalid-line", point.y, index))
+                                    },
                                 ),
                             )
                             yAxis { tickCount = 4; includeZero = false }
@@ -332,6 +631,7 @@ internal class ChartShowcasePage : BasePager() {
                             line { smooth = false; showPoints = true }
                             tooltip { enabled = false }
                         }
+                    }
                     }
                 }
 
@@ -397,10 +697,18 @@ internal class ChartShowcasePage : BasePager() {
                             }
                         }
                     }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("sparkline") },
+                        onDataUpdate = { page.refreshChartData("sparkline") },
+                    )
                     SparklineChart {
                         attr {
                             height(116f)
                             theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("sparkline") }
                             selectable = true
                             data(
                                 ChartSeries(
@@ -413,7 +721,9 @@ internal class ChartShowcasePage : BasePager() {
                                         ChartPoint(5f, 98.1f, "周五"),
                                         ChartPoint(6f, 98.0f, "周六"),
                                         ChartPoint(7f, 98.6f, "今天"),
-                                    ),
+                                    ).mapIndexed { index, point ->
+                                        point.copy(y = page.refreshedChartValue("sparkline", point.y, index))
+                                    },
                                 ),
                             )
                             line { smooth = true; showPoints = false; lineWidth = 2.5f }
@@ -484,10 +794,18 @@ internal class ChartShowcasePage : BasePager() {
                             }
                         }
                     }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("mixed") },
+                        onDataUpdate = { page.refreshChartData("mixed") },
+                    )
                     MixedChart {
                         attr {
                             height(286f)
                             theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("mixed") }
                             barData(
                                 ChartSeries(
                                     name = "实际收入",
@@ -497,7 +815,9 @@ internal class ChartShowcasePage : BasePager() {
                                         BarEntry("周三", 104f),
                                         BarEntry("周四", 138f),
                                         BarEntry("周五", 151f),
-                                    ),
+                                    ).mapIndexed { index, entry ->
+                                        entry.copy(value = page.refreshedChartValue("mixed", entry.value, index))
+                                    },
                                 ),
                             )
                             lineData(
@@ -509,7 +829,9 @@ internal class ChartShowcasePage : BasePager() {
                                         BarEntry("周三", 116f),
                                         BarEntry("周四", 128f),
                                         BarEntry("周五", 142f),
-                                    ),
+                                    ).mapIndexed { index, entry ->
+                                        entry.copy(value = page.refreshedChartValue("mixed", entry.value, index + 5))
+                                    },
                                 ),
                             )
                             yAxis { tickCount = 5; includeZero = true }
@@ -584,16 +906,24 @@ internal class ChartShowcasePage : BasePager() {
                             }
                         }
                     }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("pie") },
+                        onDataUpdate = { page.refreshChartData("pie") },
+                    )
                     PieChart {
                         attr {
                             height(292f)
                             theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("pie") }
                             seriesName = "渠道订单"
                             data(
-                                PieEntry("推荐", 420f),
-                                PieEntry("搜索", 260f),
-                                PieEntry("直播", 190f),
-                                PieEntry("其他", 130f),
+                                PieEntry("推荐", page.refreshedChartValue("pie", 420f, 0)),
+                                PieEntry("搜索", page.refreshedChartValue("pie", 260f, 1)),
+                                PieEntry("直播", page.refreshedChartValue("pie", 190f, 2)),
+                                PieEntry("其他", page.refreshedChartValue("pie", 130f, 3)),
                             )
                             pie {
                                 innerRadiusRatio = 0.58f
@@ -608,10 +938,217 @@ internal class ChartShowcasePage : BasePager() {
                         }
                         event {
                             onItemSelected {
-                                val total = 1_000f
+                                val total = page.pieTotal()
                                 val percentage = (it.item.value / total * 100f).toInt()
                                 page.pieFeedbackTitle = "已选择 ${it.item.label}"
                                 page.pieFeedbackText = "${it.item.value.toInt()} 单 · 占全部渠道 $percentage%"
+                            }
+                        }
+                    }
+                }
+
+                View {
+                    attr { marginTop(8f); marginBottom(9f) }
+                    Text { attr { text("多维洞察"); fontSize(18f); fontWeightBold(); color(primaryText) } }
+                    Text { attr { text("P2 热力图与雷达图复用 Theme、Tooltip 和原始索引回调。"); fontSize(12f); color(secondaryText); marginTop(3f) } }
+                }
+                View {
+                    attr {
+                        backgroundColor(cardBackground)
+                        borderRadius(16f)
+                        padding(14f)
+                        marginBottom(14f)
+                    }
+                    Text {
+                        attr {
+                            text("客服时段热度")
+                            fontSize(17f)
+                            fontWeightBold()
+                            color(primaryText)
+                        }
+                    }
+                    Text {
+                        attr {
+                            text("GitHub 贡献图式绿阶表达日期与时段的相对咨询热度；点击单元格可查看实际值。")
+                            fontSize(12f)
+                            color(secondaryText)
+                            marginTop(4f)
+                            marginBottom(8f)
+                        }
+                    }
+                    View {
+                        attr {
+                            backgroundColor(accentSoft)
+                            borderRadius(14f)
+                            padding(12f)
+                            marginBottom(10f)
+                        }
+                        Text {
+                            attr {
+                                text(page.heatmapFeedbackTitle)
+                                fontSize(13f)
+                                fontWeightBold()
+                                color(accent)
+                            }
+                        }
+                        Text {
+                            attr {
+                                text(page.heatmapFeedbackText)
+                                fontSize(12f)
+                                color(if (isDark) Color(0xFFD5E6FF) else Color(0xFF23416B))
+                                marginTop(4f)
+                            }
+                        }
+                    }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("heatmap") },
+                        onDataUpdate = { page.refreshChartData("heatmap") },
+                    )
+                    HeatmapChart {
+                        attr {
+                            height(246f)
+                            theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("heatmap") }
+                            seriesName = "客服咨询"
+                            data(
+                                *listOf(
+                                HeatmapEntry("周一", "09:00", 42f), HeatmapEntry("周二", "09:00", 58f),
+                                HeatmapEntry("周三", "09:00", 35f), HeatmapEntry("周四", "09:00", 74f),
+                                HeatmapEntry("周五", "09:00", 66f),
+                                HeatmapEntry("周一", "12:00", 81f), HeatmapEntry("周二", "12:00", 94f),
+                                HeatmapEntry("周三", "12:00", 72f), HeatmapEntry("周四", "12:00", 88f),
+                                HeatmapEntry("周五", "12:00", 97f),
+                                HeatmapEntry("周一", "15:00", 63f), HeatmapEntry("周二", "15:00", 76f),
+                                HeatmapEntry("周三", "15:00", 69f), HeatmapEntry("周四", "15:00", 83f),
+                                HeatmapEntry("周五", "15:00", 91f),
+                                HeatmapEntry("周一", "18:00", 39f), HeatmapEntry("周二", "18:00", 52f),
+                                HeatmapEntry("周三", "18:00", 47f), HeatmapEntry("周四", "18:00", 61f),
+                                HeatmapEntry("周五", "18:00", 56f),
+                                ).mapIndexed { index, entry ->
+                                    entry.copy(value = page.refreshedChartValue("heatmap", entry.value, index))
+                                }.toTypedArray(),
+                            )
+                            heatmap {
+                                cellGap = 4f
+                                showValueLabels = false
+                                colorScale = heatmapColorScale
+                            }
+                            tooltip { valueFormatter = { value -> "${value.toInt()} 次" } }
+                        }
+                        event {
+                            onItemSelected {
+                                page.heatmapFeedbackTitle = "已选择 ${it.item.xLabel} ${it.item.yLabel}"
+                                page.heatmapFeedbackText = "${it.seriesName}：${it.item.value.toInt()} 次 · 原始索引 ${it.itemIndex}"
+                            }
+                        }
+                    }
+                }
+                View {
+                    attr {
+                        backgroundColor(cardBackground)
+                        borderRadius(16f)
+                        padding(14f)
+                        marginBottom(14f)
+                    }
+                    Text {
+                        attr {
+                            text("服务能力对照")
+                            fontSize(17f)
+                            fontWeightBold()
+                            color(primaryText)
+                        }
+                    }
+                    Text {
+                        attr {
+                            text("同一组能力维度以极坐标网格展开；半透明填充仅强化系列范围，不表达必要信息。")
+                            fontSize(12f)
+                            color(secondaryText)
+                            marginTop(4f)
+                            marginBottom(8f)
+                        }
+                    }
+                    View {
+                        attr {
+                            backgroundColor(accentSoft)
+                            borderRadius(14f)
+                            padding(12f)
+                            marginBottom(10f)
+                        }
+                        Text {
+                            attr {
+                                text(page.radarFeedbackTitle)
+                                fontSize(13f)
+                                fontWeightBold()
+                                color(accent)
+                            }
+                        }
+                        Text {
+                            attr {
+                                text(page.radarFeedbackText)
+                                fontSize(12f)
+                                color(if (isDark) Color(0xFFD5E6FF) else Color(0xFF23416B))
+                                marginTop(4f)
+                            }
+                        }
+                    }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("radar") },
+                        onDataUpdate = { page.refreshChartData("radar") },
+                    )
+                    RadarChart {
+                        attr {
+                            height(286f)
+                            theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("radar") }
+                            data(
+                                ChartSeries(
+                                    "当前表现",
+                                    listOf(
+                                        RadarEntry("响应", 86f), RadarEntry("解决", 72f),
+                                        RadarEntry("满意度", 91f), RadarEntry("覆盖", 68f),
+                                        RadarEntry("成本", 76f),
+                                    ).mapIndexed { index, entry ->
+                                        entry.copy(value = page.refreshedChartValue("radar", entry.value, index))
+                                    },
+                                ),
+                                ChartSeries(
+                                    "目标水平",
+                                    listOf(
+                                        RadarEntry("响应", 80f), RadarEntry("解决", 82f),
+                                        RadarEntry("满意度", 88f), RadarEntry("覆盖", 84f),
+                                        RadarEntry("成本", 72f),
+                                    ).mapIndexed { index, entry ->
+                                        entry.copy(value = page.refreshedChartValue("radar", entry.value, index + 5))
+                                    },
+                                ),
+                            )
+                            radar {
+                                gridCount = 5
+                                showPoints = true
+                                trackerEnabled = true
+                                fillColors = listOf(Color(0x332563EB), Color(0x330D9488))
+                            }
+                            tooltip { valueFormatter = { value -> "${value.toInt()} 分" } }
+                        }
+                        event {
+                            onTrackerChanged { tracker ->
+                                if (tracker == null) {
+                                    page.radarFeedbackTitle = "Radar tracking released"
+                                    page.radarFeedbackText = "The preview vertex and filled area returned to the source data."
+                                } else {
+                                    page.radarFeedbackTitle = "Tracking ${tracker.selection.item.label}"
+                                    page.radarFeedbackText = "${tracker.selection.seriesName}: ${tracker.previewValue.toInt()} - filled area updates live"
+                                }
+                            }
+                            onItemSelected {
+                                page.radarFeedbackTitle = "已选择 ${it.item.label}"
+                                page.radarFeedbackText = "${it.seriesName}：${it.item.value.toInt()} 分 · 原始索引 ${it.itemIndex}"
                             }
                         }
                     }
@@ -670,10 +1207,18 @@ internal class ChartShowcasePage : BasePager() {
                             }
                         }
                     }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("area") },
+                        onDataUpdate = { page.refreshChartData("area") },
+                    )
                     AreaChart {
                         attr {
                             height(264f)
                             theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("area") }
                             data(
                                 ChartSeries(
                                     name = "成交金额",
@@ -682,7 +1227,9 @@ internal class ChartShowcasePage : BasePager() {
                                         ChartPoint(3f, 96f, "7/22"), ChartPoint(4f, 142f, "7/23"),
                                         ChartPoint(5f, 168f, "7/24"), ChartPoint(6f, 154f, "7/25"),
                                         ChartPoint(7f, 201f, "7/26"), ChartPoint(8f, 226f, "今天"),
-                                    ),
+                                    ).mapIndexed { index, point ->
+                                        point.copy(y = page.refreshedChartValue("area", point.y, index))
+                                    },
                                 ),
                             )
                             line { smooth = true; showPoints = false; lineWidth = 2.5f }
@@ -767,10 +1314,18 @@ internal class ChartShowcasePage : BasePager() {
                             }
                         }
                     }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("trend") },
+                        onDataUpdate = { page.refreshChartData("trend") },
+                    )
                     LineChart {
                         attr {
                             height(292f)
                             theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("trend") }
                             data(
                                 ChartSeries(
                                     name = "本周",
@@ -780,7 +1335,9 @@ internal class ChartShowcasePage : BasePager() {
                                         ChartPoint(5f, 232f, "7/22"), ChartPoint(6f, 218f, "7/23"),
                                         ChartPoint(7f, 276f, "7/24"), ChartPoint(8f, 245f, "7/25"),
                                         ChartPoint(9f, 294f, "7/26"), ChartPoint(10f, 318f, "今天"),
-                                    ),
+                                    ).mapIndexed { index, point ->
+                                        point.copy(y = page.refreshedChartValue("trend", point.y, index))
+                                    },
                                 ),
                                 ChartSeries(
                                     name = "上周",
@@ -790,7 +1347,9 @@ internal class ChartShowcasePage : BasePager() {
                                         ChartPoint(5f, 196f, "7/22"), ChartPoint(6f, 189f, "7/23"),
                                         ChartPoint(7f, 221f, "7/24"), ChartPoint(8f, 214f, "7/25"),
                                         ChartPoint(9f, 242f, "7/26"), ChartPoint(10f, 257f, "今天"),
-                                    ),
+                                    ).mapIndexed { index, point ->
+                                        point.copy(y = page.refreshedChartValue("trend", point.y, index + 10))
+                                    },
                                 ),
                             )
                             yAxis { tickCount = 5; includeZero = false }
@@ -881,24 +1440,36 @@ internal class ChartShowcasePage : BasePager() {
                             }
                         }
                     }
+                    ShowcaseChartControls(
+                        accent = accent,
+                        elevatedBackground = elevatedBackground,
+                        primaryText = primaryText,
+                        onEntranceRefresh = { page.refreshChartEntrance("bar") },
+                        onDataUpdate = { page.refreshChartData("bar") },
+                    )
                     BarChart {
                         attr {
                             height(276f)
                             theme = chartTheme
+                            entrance { progress = page.chartEntranceProgress("bar") }
                             data(
                                 ChartSeries(
                                     name = "本月",
                                     items = listOf(
                                         BarEntry("搜索", 186f), BarEntry("推荐", 248f), BarEntry("活动", 164f),
                                         BarEntry("直播", 292f), BarEntry("社交", 221f),
-                                    ),
+                                    ).mapIndexed { index, entry ->
+                                        entry.copy(value = page.refreshedChartValue("bar", entry.value, index))
+                                    },
                                 ),
                                 ChartSeries(
                                     name = "上月",
                                     items = listOf(
                                         BarEntry("搜索", 159f), BarEntry("推荐", 214f), BarEntry("活动", 181f),
                                         BarEntry("直播", 238f), BarEntry("社交", 196f),
-                                    ),
+                                    ).mapIndexed { index, entry ->
+                                        entry.copy(value = page.refreshedChartValue("bar", entry.value, index + 5))
+                                    },
                                 ),
                             )
                             yAxis { tickCount = 5 }
