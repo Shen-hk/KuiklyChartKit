@@ -6,13 +6,14 @@
         name="viewport"
         content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no"
     >
-    <meta name="theme-color" content="#08111F">
-    <title>Kuikly ChartKit · P0 Showcase</title>
+    <meta name="theme-color" content="#071423">
+    <title>Kuikly ChartKit | Data Studio</title>
     <style>
         :root {
             color-scheme: dark;
-            font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
-            background: #08111f;
+            font-family: "HarmonyOS Sans SC", "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #071423;
+            color: #e7f0fb;
         }
 
         * {
@@ -24,8 +25,7 @@
         }
 
         html,
-        body,
-        #root {
+        body {
             width: 100%;
             height: 100%;
             overflow: hidden;
@@ -33,18 +33,354 @@
 
         body {
             background:
-                radial-gradient(circle at 15% 0%, rgba(47, 128, 237, 0.18), transparent 36%),
-                #08111f;
+                radial-gradient(circle at 82% -12%, rgba(45, 212, 191, 0.18), transparent 32%),
+                radial-gradient(circle at 8% 92%, rgba(56, 189, 248, 0.1), transparent 35%),
+                #071423;
             overscroll-behavior: none;
         }
 
-        input:focus {
-            outline: none;
+        .studio-shell {
+            display: grid;
+            grid-template-columns: 232px minmax(0, 1fr);
+            grid-template-rows: 66px minmax(0, 1fr);
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .studio-header {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 0 22px;
+            background:
+                linear-gradient(112deg, #0b1f36 0%, #0d4a5b 46%, #0e7490 100%);
+            border-bottom: 1px solid rgba(186, 230, 253, 0.22);
+            box-shadow: 0 12px 30px rgba(1, 10, 20, 0.22);
+        }
+
+        .brand-lockup {
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            gap: 11px;
+        }
+
+        .brand-mark {
+            position: relative;
+            display: grid;
+            width: 36px;
+            height: 36px;
+            place-items: end center;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 3px;
+            padding: 7px;
+            overflow: hidden;
+            border: 1px solid rgba(240, 253, 250, 0.42);
+            border-radius: 11px;
+            background: rgba(3, 26, 40, 0.35);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .brand-mark span {
+            align-self: end;
+            display: block;
+            width: 100%;
+            border-radius: 3px 3px 1px 1px;
+            background: linear-gradient(180deg, #fef3c7, #f59e0b);
+        }
+
+        .brand-mark span:nth-child(1) { height: 8px; }
+        .brand-mark span:nth-child(2) { height: 14px; background: linear-gradient(180deg, #ccfbf1, #2dd4bf); }
+        .brand-mark span:nth-child(3) { height: 20px; background: linear-gradient(180deg, #dbeafe, #38bdf8); }
+
+        .brand-copy {
+            min-width: 0;
+        }
+
+        .brand-copy strong,
+        .brand-copy span {
+            display: block;
+            white-space: nowrap;
+        }
+
+        .brand-copy strong {
+            color: #f8fafc;
+            font-size: 16px;
+            font-weight: 750;
+            letter-spacing: -0.02em;
+        }
+
+        .brand-copy span {
+            margin-top: 1px;
+            color: rgba(236, 254, 255, 0.76);
+            font-size: 11px;
+            letter-spacing: 0.025em;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .header-status span {
+            padding: 7px 10px;
+            border: 1px solid rgba(240, 253, 250, 0.24);
+            border-radius: 999px;
+            background: rgba(1, 24, 39, 0.26);
+            color: #ecfeff;
+            font-size: 11px;
+            font-weight: 650;
+            letter-spacing: 0.03em;
+        }
+
+        .catalog {
+            display: flex;
+            min-width: 0;
+            min-height: 0;
+            flex-direction: column;
+            gap: 20px;
+            padding: 18px 13px;
+            overflow-y: auto;
+            background: rgba(4, 15, 29, 0.82);
+            border-right: 1px solid rgba(148, 163, 184, 0.13);
+        }
+
+        .catalog-label {
+            padding: 0 8px;
+            color: #72849a;
+            font-size: 10px;
+            font-weight: 750;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .catalog-group {
+            display: grid;
+            gap: 7px;
+        }
+
+        .catalog-group > strong {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 8px 2px;
+            color: #a8b8ca;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .catalog-group > strong em {
+            min-width: 21px;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: rgba(71, 85, 105, 0.42);
+            color: #d6e2ef;
+            font-size: 10px;
+            font-style: normal;
+            text-align: center;
+        }
+
+        .catalog-item {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            min-height: 32px;
+            padding: 0 9px;
+            border: 1px solid transparent;
+            border-radius: 9px;
+            color: #c6d4e2;
+            font-size: 12px;
+        }
+
+        .catalog-item.active {
+            border-color: rgba(45, 212, 191, 0.22);
+            background: linear-gradient(90deg, rgba(20, 184, 166, 0.17), rgba(14, 116, 144, 0.08));
+            color: #f0fdfa;
+        }
+
+        .catalog-dot {
+            width: 7px;
+            height: 7px;
+            flex: 0 0 7px;
+            border-radius: 999px;
+            background: #38bdf8;
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.08);
+        }
+
+        .catalog-dot.teal { background: #2dd4bf; box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.08); }
+        .catalog-dot.amber { background: #fbbf24; box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.08); }
+        .catalog-dot.rose { background: #fb7185; box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.08); }
+
+        .catalog-footer {
+            margin-top: auto;
+            padding: 12px 8px 2px;
+            border-top: 1px solid rgba(148, 163, 184, 0.13);
+            color: #718096;
+            font-size: 10px;
+            line-height: 1.55;
+        }
+
+        .workspace {
+            position: relative;
+            min-width: 0;
+            min-height: 0;
+            padding: 16px;
+            overflow: hidden;
+        }
+
+        .workspace::before {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            content: "";
+            opacity: 0.55;
+            background-image:
+                linear-gradient(rgba(125, 211, 252, 0.035) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(125, 211, 252, 0.035) 1px, transparent 1px);
+            background-size: 28px 28px;
+        }
+
+        #root {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            border: 1px solid rgba(125, 211, 252, 0.14);
+            border-radius: 18px;
+            background: #0b1728;
+            box-shadow: 0 24px 54px rgba(0, 0, 0, 0.28);
+        }
+
+        @media (max-width: 860px) {
+            .studio-shell {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-rows: 58px 58px minmax(0, 1fr);
+            }
+
+            .studio-header {
+                padding: 0 14px;
+            }
+
+            .header-status span:not(:first-child) {
+                display: none;
+            }
+
+            .catalog {
+                flex-direction: row;
+                align-items: center;
+                gap: 11px;
+                padding: 0 12px;
+                overflow-x: auto;
+                overflow-y: hidden;
+                border-right: 0;
+                border-bottom: 1px solid rgba(148, 163, 184, 0.13);
+            }
+
+            .catalog-label,
+            .catalog-footer {
+                display: none;
+            }
+
+            .catalog-group {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex: 0 0 auto;
+            }
+
+            .catalog-group > strong {
+                padding: 0 4px;
+                font-size: 11px;
+            }
+
+            .catalog-group > strong em {
+                display: none;
+            }
+
+            .catalog-item {
+                min-height: 28px;
+                padding: 0 8px;
+                font-size: 11px;
+            }
+
+            .workspace {
+                padding: 8px;
+            }
+
+            #root {
+                border-radius: 13px;
+            }
+        }
+
+        @media (max-width: 520px) {
+            .brand-copy span,
+            .catalog-item:not(.active) {
+                display: none;
+            }
+
+            .studio-header {
+                gap: 10px;
+            }
+
+            .header-status span {
+                padding: 6px 8px;
+                font-size: 10px;
+            }
         }
     </style>
 </head>
 <body>
-<div id="root" aria-label="Kuikly ChartKit showcase"></div>
+<div class="studio-shell">
+    <header class="studio-header">
+        <div class="brand-lockup" aria-label="Kuikly ChartKit Data Studio">
+            <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span class="brand-copy">
+                <strong>Kuikly ChartKit</strong>
+                <span>Kotlin DSL · Canvas Data Studio</span>
+            </span>
+        </div>
+        <div class="header-status" aria-label="演示状态">
+            <span>P2 LIVE</span>
+            <span>H5 CANVAS</span>
+            <span>3 TARGETS</span>
+        </div>
+    </header>
+
+    <aside class="catalog" aria-label="演示目录">
+        <div class="catalog-label">Showcase Catalog</div>
+        <div class="catalog-group">
+            <strong>趋势与性能 <em>4</em></strong>
+            <div class="catalog-item active"><span class="catalog-dot"></span>Performance Lab</div>
+            <div class="catalog-item"><span class="catalog-dot teal"></span>Line &amp; Area</div>
+            <div class="catalog-item"><span class="catalog-dot amber"></span>Sparkline</div>
+        </div>
+        <div class="catalog-group">
+            <strong>业务洞察 <em>3</em></strong>
+            <div class="catalog-item"><span class="catalog-dot teal"></span>Bar &amp; Mixed</div>
+            <div class="catalog-item"><span class="catalog-dot rose"></span>Pie &amp; Donut</div>
+        </div>
+        <div class="catalog-group">
+            <strong>P2 决策视图 <em>2</em></strong>
+            <div class="catalog-item"><span class="catalog-dot amber"></span>Heatmap</div>
+            <div class="catalog-item"><span class="catalog-dot rose"></span>Radar</div>
+        </div>
+        <div class="catalog-footer">
+            真实 Kotlin DSL 渲染<br>
+            交互、Tooltip 与坏数据校验
+        </div>
+    </aside>
+
+    <main class="workspace">
+        <div id="root" aria-label="Kuikly ChartKit H5 数据工作台"></div>
+    </main>
+</div>
 <!-- Kuikly requires the business bundle to register pages before Web Render attaches. -->
 <script src="page/nativevue2.js"></script>
 <script src="h5App.js"></script>

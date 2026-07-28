@@ -5,6 +5,7 @@ import com.tencent.kuikly.core.render.web.ktx.SizeI
 import com.tencent.kuikly.core.render.web.runtime.web.expand.KuiklyRenderViewDelegator
 import kotlinx.browser.document
 import kotlinx.browser.window
+import org.w3c.dom.HTMLElement
 
 private const val CONTAINER_ID = "root"
 private const val DEFAULT_PAGE_NAME = "chart_showcase"
@@ -30,8 +31,10 @@ private class ChartWebRenderDelegator : KuiklyRenderViewDelegatorDelegate {
 }
 
 fun main() {
-    val width = window.innerWidth
-    val height = window.innerHeight
+    val container = document.getElementById(CONTAINER_ID) as? HTMLElement ?: return
+    // The H5 shell owns the header and catalog, so the Canvas runtime must use the remaining workspace.
+    val width = container.clientWidth
+    val height = container.clientHeight
     val pageName = queryParameter("page_name") ?: DEFAULT_PAGE_NAME
     val pageData: Map<String, Any> = mapOf(
         "statusBarHeight" to 0f,
