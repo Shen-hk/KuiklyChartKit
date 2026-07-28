@@ -744,6 +744,15 @@ private object ChartCanvasPainter {
     private const val LEGEND_FONT_SIZE = 11f
     private const val EMPTY_FONT_SIZE = 13f
 
+    private data class BarValueLabelCandidate(
+        val value: Float,
+        val bounds: ChartRect,
+        val barWidth: Float,
+        val text: String,
+        val color: Color,
+        val selected: Boolean,
+    )
+
     fun drawLine(
         context: CanvasContext,
         width: Float,
@@ -949,7 +958,7 @@ private object ChartCanvasPainter {
         val groupWidth = layout.slotWidth * attr.barOptions.barWidthRatio
         val barWidth = (groupWidth / drawnSeries.size.coerceAtLeast(1)).coerceAtLeast(1f)
         val zeroY = layout.yFor(0f).coerceIn(layout.plot.top, layout.plot.bottom)
-        val valueLabelBounds = mutableListOf<ChartRect>()
+        val valueLabels = mutableListOf<BarValueLabelCandidate>()
         drawnSeries.forEachIndexed { seriesIndex, series ->
             val color = series.color ?: attr.theme.palette[seriesIndex % attr.theme.palette.size]
             series.items.forEachIndexed { itemIndex, entry ->
@@ -965,18 +974,17 @@ private object ChartCanvasPainter {
                 fillRoundedRect(context, bounds, attr.barOptions.cornerRadius, color)
                 val selection = ChartSelection(seriesIndex, itemIndex, series.name, entry)
                 rendered += RenderedBar(bounds, selection)
-                drawBarValueLabel(
-                    context = context,
+                if (attr.barOptions.showValueLabels) valueLabels += BarValueLabelCandidate(
                     value = entry.value,
                     bounds = bounds,
-                    plot = layout.plot,
                     barWidth = barWidth,
                     text = attr.tooltipOptions.format(entry.value),
                     color = attr.theme.labelColor,
-                    occupiedBounds = valueLabelBounds,
+                    selected = selection == selected,
                 )
             }
         }
+        drawBarValueLabels(context, valueLabels, layout.plot)
 
         selected?.let { selection ->
             rendered.firstOrNull { it.selection == selection }?.let { bar ->
@@ -1154,7 +1162,7 @@ private object ChartCanvasPainter {
         val groupWidth = layout.slotWidth * attr.barOptions.barWidthRatio
         val barWidth = (groupWidth / attr.barSeries.size.coerceAtLeast(1)).coerceAtLeast(1f)
         val zeroY = layout.yFor(0f).coerceIn(layout.plot.top, layout.plot.bottom)
-        val valueLabelBounds = mutableListOf<ChartRect>()
+        val valueLabels = mutableListOf<BarValueLabelCandidate>()
         attr.barSeries.forEachIndexed { seriesIndex, series ->
             val color = series.color ?: attr.theme.palette[seriesIndex % attr.theme.palette.size]
             series.items.forEachIndexed { itemIndex, entry ->
@@ -1179,18 +1187,17 @@ private object ChartCanvasPainter {
                         item = entry,
                     ),
                 )
-                drawBarValueLabel(
-                    context = context,
+                if (attr.barOptions.showValueLabels) valueLabels += BarValueLabelCandidate(
                     value = entry.value,
                     bounds = bounds,
-                    plot = layout.plot,
                     barWidth = barWidth,
                     text = attr.tooltipOptions.format(entry.value),
                     color = attr.theme.labelColor,
-                    occupiedBounds = valueLabelBounds,
+                    selected = renderedBars.last().selection == selected,
                 )
             }
         }
+        drawBarValueLabels(context, valueLabels, layout.plot)
 
         val renderedLinePoints = mutableListOf<RenderedMixedLinePoint>()
         val lineRevealProgress = ((attr.entranceProgress.coerceIn(0f, 1f) - 0.35f) / 0.65f).coerceIn(0f, 1f)
@@ -1622,40 +1629,63 @@ private object ChartCanvasPainter {
         context.fill()
     }
 
-    /** Draws only value labels that fit inside the plot and do not collide with earlier labels. */
+    /** Resolves labels by priority so selected values survive dense or extreme layouts. */
+    private fun drawBarValueLabels(
+        context: CanvasContext,
+        candidates: List<BarValueLabelCandidate>,
+        plot: ChartRect,
+    ) {
+        val occupiedBounds = mutableListOf<ChartRect>()
+        candidates.sortedWith(
+            compareByDescending<BarValueLabelCandidate> { it.selected }
+                .thenByDescending { it.bounds.height }
+        ).forEach { candidate ->
+            drawBarValueLabel(context, candidate, plot, occupiedBounds)
+        }
+    }
+
+    /** Tries outside, staggered and inside placements before using omission as a final fallback. */
     private fun drawBarValueLabel(
         context: CanvasContext,
-        value: Float,
-        bounds: ChartRect,
+        candidate: BarValueLabelCandidate,
         plot: ChartRect,
-        barWidth: Float,
-        text: String,
-        color: Color,
         occupiedBounds: MutableList<ChartRect>,
     ) {
-        if (barWidth < 18f) return
-        context.font(10f)
-        val textWidth = context.measureText(text).width
-        if (textWidth + 4f > plot.width) return
-        val preferredBaseline = if (value >= 0f) bounds.top - 5f else bounds.bottom + 12f
+        if (candidate.barWidth < 12f) return
         val minBaseline = plot.top + 10f
         val maxBaseline = plot.bottom - 3f
-        if (preferredBaseline !in minBaseline..maxBaseline) return
-        val centerX = ((bounds.left + bounds.right) / 2f).coerceIn(
-            plot.left + textWidth / 2f + 2f,
-            plot.right - textWidth / 2f - 2f,
-        )
-        val labelBounds = ChartRect(
-            left = centerX - textWidth / 2f - 2f,
-            top = preferredBaseline - 10f,
-            right = centerX + textWidth / 2f + 2f,
-            bottom = preferredBaseline + 2f,
-        )
-        if (occupiedBounds.any { labelsOverlap(it, labelBounds) }) return
-        context.textAlign(TextAlign.CENTER)
-        context.fillStyle(color)
-        context.fillText(text, centerX, preferredBaseline)
-        occupiedBounds += labelBounds
+        listOf(10f, 9f).forEach { fontSize ->
+            context.font(fontSize)
+            val text = ellipsize(context, candidate.text, (plot.width - 4f).coerceAtLeast(8f))
+            val textWidth = context.measureText(text).width
+            if (textWidth + 4f > plot.width) return@forEach
+            val centerX = ((candidate.bounds.left + candidate.bounds.right) / 2f).coerceIn(
+                plot.left + textWidth / 2f + 2f,
+                plot.right - textWidth / 2f - 2f,
+            )
+            val outsideBaseline = if (candidate.value >= 0f) candidate.bounds.top - 5f else candidate.bounds.bottom + 12f
+            val staggeredBaseline = outsideBaseline + if (candidate.value >= 0f) -12f else 12f
+            val insideBaseline = if (candidate.bounds.height >= 20f) {
+                (candidate.bounds.top + candidate.bounds.bottom) / 2f + fontSize * 0.35f
+            } else {
+                null
+            }
+            listOfNotNull(outsideBaseline, staggeredBaseline, insideBaseline).forEach { baseline ->
+                if (baseline !in minBaseline..maxBaseline) return@forEach
+                val labelBounds = ChartRect(
+                    left = centerX - textWidth / 2f - 2f,
+                    top = baseline - fontSize,
+                    right = centerX + textWidth / 2f + 2f,
+                    bottom = baseline + 2f,
+                )
+                if (occupiedBounds.any { labelsOverlap(it, labelBounds) }) return@forEach
+                context.textAlign(TextAlign.CENTER)
+                context.fillStyle(candidate.color)
+                context.fillText(text, centerX, baseline)
+                occupiedBounds += labelBounds
+                return
+            }
+        }
     }
 
     private fun labelsOverlap(first: ChartRect, second: ChartRect): Boolean =
