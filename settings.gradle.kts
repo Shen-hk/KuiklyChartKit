@@ -26,4 +26,3 @@ rootProject.name = "KuiklyChartKit"
 include(":androidApp")
 include(":chartkit")
 include(":h5App")
-include(":miniApp")
