@@ -949,6 +949,7 @@ private object ChartCanvasPainter {
         val groupWidth = layout.slotWidth * attr.barOptions.barWidthRatio
         val barWidth = (groupWidth / drawnSeries.size.coerceAtLeast(1)).coerceAtLeast(1f)
         val zeroY = layout.yFor(0f).coerceIn(layout.plot.top, layout.plot.bottom)
+        val valueLabelBounds = mutableListOf<ChartRect>()
         drawnSeries.forEachIndexed { seriesIndex, series ->
             val color = series.color ?: attr.theme.palette[seriesIndex % attr.theme.palette.size]
             series.items.forEachIndexed { itemIndex, entry ->
@@ -964,19 +965,22 @@ private object ChartCanvasPainter {
                 fillRoundedRect(context, bounds, attr.barOptions.cornerRadius, color)
                 val selection = ChartSelection(seriesIndex, itemIndex, series.name, entry)
                 rendered += RenderedBar(bounds, selection)
-                if (attr.barOptions.showValueLabels && barWidth >= 18f) {
-                    context.font(10f)
-                    context.textAlign(TextAlign.CENTER)
-                    context.fillStyle(attr.theme.labelColor)
-                    val labelY = if (entry.value >= 0f) (top - 5f).coerceAtLeast(layout.plot.top + 10f) else (bottom + 12f).coerceAtMost(layout.plot.bottom)
-                    context.fillText(attr.tooltipOptions.format(entry.value), (left + right) / 2f, labelY)
-                }
+                drawBarValueLabel(
+                    context = context,
+                    value = entry.value,
+                    bounds = bounds,
+                    plot = layout.plot,
+                    barWidth = barWidth,
+                    text = attr.tooltipOptions.format(entry.value),
+                    color = attr.theme.labelColor,
+                    occupiedBounds = valueLabelBounds,
+                )
             }
         }
 
         selected?.let { selection ->
             rendered.firstOrNull { it.selection == selection }?.let { bar ->
-                strokeRect(context, bar.bounds, attr.theme.selectionColor, 2f)
+                strokeRoundedRect(context, bar.bounds, attr.barOptions.cornerRadius, attr.theme.selectionColor, 2f)
                 if (attr.tooltipOptions.enabled) {
                     drawTooltip(
                         context, width, height, (bar.bounds.left + bar.bounds.right) / 2f, bar.bounds.top,
@@ -1150,6 +1154,7 @@ private object ChartCanvasPainter {
         val groupWidth = layout.slotWidth * attr.barOptions.barWidthRatio
         val barWidth = (groupWidth / attr.barSeries.size.coerceAtLeast(1)).coerceAtLeast(1f)
         val zeroY = layout.yFor(0f).coerceIn(layout.plot.top, layout.plot.bottom)
+        val valueLabelBounds = mutableListOf<ChartRect>()
         attr.barSeries.forEachIndexed { seriesIndex, series ->
             val color = series.color ?: attr.theme.palette[seriesIndex % attr.theme.palette.size]
             series.items.forEachIndexed { itemIndex, entry ->
@@ -1174,17 +1179,16 @@ private object ChartCanvasPainter {
                         item = entry,
                     ),
                 )
-                if (attr.barOptions.showValueLabels && barWidth >= 18f) {
-                    context.font(10f)
-                    context.textAlign(TextAlign.CENTER)
-                    context.fillStyle(attr.theme.labelColor)
-                    val labelY = if (entry.value >= 0f) {
-                        (top - 5f).coerceAtLeast(layout.plot.top + 10f)
-                    } else {
-                        (bottom + 12f).coerceAtMost(layout.plot.bottom)
-                    }
-                    context.fillText(attr.tooltipOptions.format(entry.value), (left + right) / 2f, labelY)
-                }
+                drawBarValueLabel(
+                    context = context,
+                    value = entry.value,
+                    bounds = bounds,
+                    plot = layout.plot,
+                    barWidth = barWidth,
+                    text = attr.tooltipOptions.format(entry.value),
+                    color = attr.theme.labelColor,
+                    occupiedBounds = valueLabelBounds,
+                )
             }
         }
 
@@ -1231,7 +1235,7 @@ private object ChartCanvasPainter {
         selected?.let { selection ->
             when (selection.seriesType) {
                 MixedSeriesType.BAR -> renderedBars.firstOrNull { it.selection == selection }?.let { bar ->
-                    strokeRect(context, bar.bounds, attr.theme.selectionColor, 2f)
+                    strokeRoundedRect(context, bar.bounds, attr.barOptions.cornerRadius, attr.theme.selectionColor, 2f)
                     if (attr.tooltipOptions.enabled) {
                         drawTooltip(
                             context,
@@ -1618,6 +1622,45 @@ private object ChartCanvasPainter {
         context.fill()
     }
 
+    /** Draws only value labels that fit inside the plot and do not collide with earlier labels. */
+    private fun drawBarValueLabel(
+        context: CanvasContext,
+        value: Float,
+        bounds: ChartRect,
+        plot: ChartRect,
+        barWidth: Float,
+        text: String,
+        color: Color,
+        occupiedBounds: MutableList<ChartRect>,
+    ) {
+        if (barWidth < 18f) return
+        context.font(10f)
+        val textWidth = context.measureText(text).width
+        if (textWidth + 4f > plot.width) return
+        val preferredBaseline = if (value >= 0f) bounds.top - 5f else bounds.bottom + 12f
+        val minBaseline = plot.top + 10f
+        val maxBaseline = plot.bottom - 3f
+        if (preferredBaseline !in minBaseline..maxBaseline) return
+        val centerX = ((bounds.left + bounds.right) / 2f).coerceIn(
+            plot.left + textWidth / 2f + 2f,
+            plot.right - textWidth / 2f - 2f,
+        )
+        val labelBounds = ChartRect(
+            left = centerX - textWidth / 2f - 2f,
+            top = preferredBaseline - 10f,
+            right = centerX + textWidth / 2f + 2f,
+            bottom = preferredBaseline + 2f,
+        )
+        if (occupiedBounds.any { labelsOverlap(it, labelBounds) }) return
+        context.textAlign(TextAlign.CENTER)
+        context.fillStyle(color)
+        context.fillText(text, centerX, preferredBaseline)
+        occupiedBounds += labelBounds
+    }
+
+    private fun labelsOverlap(first: ChartRect, second: ChartRect): Boolean =
+        first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top
+
     private fun fillRoundedRect(context: CanvasContext, rect: ChartRect, radius: Float, color: Color) {
         if (rect.width <= 0f || rect.height <= 0f) return
         val r = min(radius, min(rect.width, rect.height) / 2f).coerceAtLeast(0f)
@@ -1642,6 +1685,31 @@ private object ChartCanvasPainter {
         context.lineTo(rect.right, rect.top)
         context.lineTo(rect.right, rect.bottom)
         context.lineTo(rect.left, rect.bottom)
+        context.closePath()
+        context.strokeStyle(color)
+        context.lineWidth(width)
+        context.stroke()
+    }
+
+    private fun strokeRoundedRect(
+        context: CanvasContext,
+        rect: ChartRect,
+        radius: Float,
+        color: Color,
+        width: Float,
+    ) {
+        if (rect.width <= 0f || rect.height <= 0f) return
+        val r = min(radius, min(rect.width, rect.height) / 2f).coerceAtLeast(0f)
+        context.beginPath()
+        context.moveTo(rect.left + r, rect.top)
+        context.lineTo(rect.right - r, rect.top)
+        context.quadraticCurveTo(rect.right, rect.top, rect.right, rect.top + r)
+        context.lineTo(rect.right, rect.bottom - r)
+        context.quadraticCurveTo(rect.right, rect.bottom, rect.right - r, rect.bottom)
+        context.lineTo(rect.left + r, rect.bottom)
+        context.quadraticCurveTo(rect.left, rect.bottom, rect.left, rect.bottom - r)
+        context.lineTo(rect.left, rect.top + r)
+        context.quadraticCurveTo(rect.left, rect.top, rect.left + r, rect.top)
         context.closePath()
         context.strokeStyle(color)
         context.lineWidth(width)
