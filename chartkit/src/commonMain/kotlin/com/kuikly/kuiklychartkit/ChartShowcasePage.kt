@@ -42,6 +42,78 @@ private enum class ShowcaseThemeMode {
     SUNSET,
 }
 
+private data class HeatmapShowcaseScenario(
+    val seriesName: String,
+    val summary: String,
+    val entries: List<HeatmapEntry>,
+) {
+    val columnCount: Int get() = entries.map { it.xLabel }.distinct().size
+    val rowCount: Int get() = entries.map { it.yLabel }.distinct().size
+}
+
+private fun buildHeatmapEntries(
+    xLabels: List<String>,
+    yLabels: List<String>,
+    values: List<List<Float>>,
+): List<HeatmapEntry> {
+    require(values.size == yLabels.size) { "Heatmap values must provide one row per yLabel" }
+    require(values.all { it.size == xLabels.size }) { "Heatmap values must provide one value per xLabel" }
+    return yLabels.flatMapIndexed { rowIndex, yLabel ->
+        xLabels.mapIndexed { columnIndex, xLabel ->
+            HeatmapEntry(
+                xLabel = xLabel,
+                yLabel = yLabel,
+                value = values[rowIndex][columnIndex],
+            )
+        }
+    }
+}
+
+private val heatmapShowcaseScenarios = listOf(
+    HeatmapShowcaseScenario(
+        seriesName = "客服咨询",
+        summary = "工作日分时咨询热度",
+        entries = buildHeatmapEntries(
+            xLabels = listOf("周一", "周二", "周三", "周四", "周五"),
+            yLabels = listOf("09:00", "12:00", "15:00", "18:00"),
+            values = listOf(
+                listOf(42f, 58f, 35f, 74f, 66f),
+                listOf(81f, 94f, 72f, 88f, 97f),
+                listOf(63f, 76f, 69f, 83f, 91f),
+                listOf(39f, 52f, 47f, 61f, 56f),
+            ),
+        ),
+    ),
+    HeatmapShowcaseScenario(
+        seriesName = "活动转化",
+        summary = "四个渠道的漏斗表现",
+        entries = buildHeatmapEntries(
+            xLabels = listOf("搜索", "推荐", "直播", "社群"),
+            yLabels = listOf("曝光", "点击", "加购"),
+            values = listOf(
+                listOf(98f, 86f, 91f, 74f),
+                listOf(72f, 68f, 83f, 59f),
+                listOf(41f, 35f, 57f, 28f),
+            ),
+        ),
+    ),
+    HeatmapShowcaseScenario(
+        seriesName = "仓配履约",
+        summary = "六仓五环节的负载变化",
+        entries = buildHeatmapEntries(
+            xLabels = listOf("华北仓", "华东仓", "华南仓", "西南仓", "中转仓", "前置仓"),
+            yLabels = listOf("入库", "拣货", "打包", "出库", "签收"),
+            values = listOf(
+                listOf(44f, 63f, 58f, 47f, 51f, 39f),
+                listOf(72f, 88f, 83f, 69f, 76f, 64f),
+                listOf(61f, 79f, 75f, 66f, 70f, 57f),
+                listOf(85f, 93f, 89f, 78f, 82f, 74f),
+                listOf(52f, 67f, 64f, 55f, 58f, 49f),
+            ),
+        ),
+    ),
+)
+
 private fun buildPerformancePoints(pointCount: Int): List<ChartPoint> = List(pointCount) { index ->
     ChartPoint(
         x = index.toFloat(),
@@ -135,12 +207,16 @@ internal class ChartShowcasePage : BasePager() {
     private var performanceFeedbackText by observable("点击折线可核对采样前的原始数据索引。")
     private var categoryFeedbackTitle by observable("等待分类交互")
     private var categoryFeedbackText by observable("点击柱体查看本月与上月的原始订单量。")
+    private var heatmapScenarioIndex by observable(0)
+    private var liveUpdateValues by observable(listOf(46f, 68f, 41f, 73f, 57f, 34f, 62f, 52f, 78f, 49f))
+    private var liveUpdateFeedback by observable("点击按钮后会随机固定几个点，并平滑更新其余数据点。")
 
     private var chartControlRevision by observable(0)
     private val chartDataVersions = mutableMapOf<String, Int>()
     private val chartDataSeeds = mutableMapOf<String, Int>()
     private val chartEntranceProgress = mutableMapOf<String, Float>()
     private val chartEntranceTimers = mutableMapOf<String, Timer>()
+    private var liveUpdateTimer: Timer? = null
 
     private val isH5Showcase: Boolean
         get() = pageData.params.optString("is_H5") == "1"
@@ -180,7 +256,58 @@ internal class ChartShowcasePage : BasePager() {
     private fun refreshChartData(chartKey: String) {
         chartDataVersions[chartKey] = (chartDataVersions[chartKey] ?: 0) + 1
         chartDataSeeds[chartKey] = Random.nextInt()
+        if (chartKey == "heatmap") {
+            heatmapScenarioIndex = (heatmapScenarioIndex + 1) % heatmapShowcaseScenarios.size
+            syncHeatmapFeedbackWithScenario()
+        }
         refreshChartEntrance(chartKey)
+    }
+
+    private fun runLiveUpdateDemo() {
+        val fixed = (liveUpdateValues.indices).shuffled().take(Random.nextInt(2, 5)).toSet()
+        val startValues = liveUpdateValues
+        val targetValues = startValues.mapIndexed { index, value ->
+            if (index in fixed) {
+                value
+            } else {
+                var next = Random.nextInt(10, 96).toFloat()
+                if (kotlin.math.abs(next - value) < 14f) {
+                    next = if (next < 50f) (next + 22f).coerceAtMost(96f) else (next - 22f).coerceAtLeast(8f)
+                }
+                next
+            }
+        }
+        val fixedLabels = fixed.sorted().joinToString("、") { "${9 + it}:00" }
+        liveUpdateFeedback = "本轮固定 $fixedLabels；其余 ${targetValues.size - fixed.size} 个点正在平滑更新。"
+        liveUpdateTimer?.cancel()
+        var frame = 0
+        val frameCount = 72
+        val timer = Timer()
+        liveUpdateTimer = timer
+        timer.schedule(delay = 16, period = 16) {
+            frame += 1
+            val linear = (frame.toFloat() / frameCount).coerceIn(0f, 1f)
+            val eased = 1f - (1f - linear) * (1f - linear)
+            liveUpdateValues = startValues.mapIndexed { index, startValue ->
+                if (index in fixed) startValue else startValue + (targetValues[index] - startValue) * eased
+            }
+            if (linear >= 1f) {
+                timer.cancel()
+                if (liveUpdateTimer === timer) liveUpdateTimer = null
+                liveUpdateFeedback = "本轮固定 $fixedLabels；其余 ${targetValues.size - fixed.size} 个点已完成平滑更新。"
+            }
+        }
+    }
+
+    private fun currentHeatmapScenario(): HeatmapShowcaseScenario {
+        return heatmapShowcaseScenarios[heatmapScenarioIndex]
+    }
+
+    private fun syncHeatmapFeedbackWithScenario() {
+        val scenario = currentHeatmapScenario()
+        heatmapFeedbackTitle = "已切换 ${scenario.seriesName} 示例"
+        heatmapFeedbackText =
+            "${scenario.summary} · ${scenario.columnCount} 列 × ${scenario.rowCount} 行，共 ${scenario.entries.size} 个单元格"
     }
 
     private fun refreshedChartValue(chartKey: String, base: Float, index: Int): Float {
@@ -217,6 +344,8 @@ internal class ChartShowcasePage : BasePager() {
     override fun viewDestroyed() {
         chartEntranceTimers.values.forEach { it.cancel() }
         chartEntranceTimers.clear()
+        liveUpdateTimer?.cancel()
+        liveUpdateTimer = null
         super.viewDestroyed()
     }
 
@@ -420,6 +549,73 @@ internal class ChartShowcasePage : BasePager() {
                                 fontSize(12f)
                                 color(accent)
                             }
+                        }
+                    }
+                }
+
+                View {
+                    attr { marginTop(8f); marginBottom(9f) }
+                    Text { attr { text("实时局部更新"); fontSize(18f); fontWeightBold(); color(primaryText) } }
+                    Text { attr { text("随机保持部分点不动，其余点沿 Y 轴平滑过渡。适合监控聚合和实时修正。"); fontSize(12f); color(secondaryText); marginTop(3f) } }
+                }
+                View {
+                    attr {
+                        backgroundColor(cardBackground)
+                        borderRadius(16f)
+                        padding(14f)
+                        marginBottom(14f)
+                    }
+                    Text {
+                        attr {
+                            text("随机数据更新演示")
+                            fontSize(17f)
+                            fontWeightBold()
+                            color(primaryText)
+                        }
+                    }
+                    Text {
+                        attr {
+                            text(page.liveUpdateFeedback)
+                            fontSize(12f)
+                            color(secondaryText)
+                            marginTop(4f)
+                            marginBottom(10f)
+                        }
+                    }
+                    Button {
+                        attr {
+                            size(124f, 34f)
+                            borderRadius(17f)
+                            backgroundColor(accent)
+                            marginBottom(10f)
+                            titleAttr {
+                                text("随机更新数据")
+                                fontSize(12f)
+                                color(Color.WHITE)
+                            }
+                        }
+                        event { click { page.runLiveUpdateDemo() } }
+                    }
+                    LineChart {
+                        attr {
+                            height(220f)
+                            theme = chartTheme
+                            data(
+                                ChartSeries(
+                                    "实时指标",
+                                    page.liveUpdateValues.mapIndexed { index, value ->
+                                        ChartPoint(index.toFloat(), value, "${9 + index}:00")
+                                    },
+                                ),
+                            )
+                            yAxis {
+                                tickCount = 5
+                                min = 0f
+                                max = 100f
+                            }
+                            legend { visible = false }
+                            line { smooth = false; showPoints = true; pointRadius = 4.5f }
+                            tooltip { enabled = true }
                         }
                     }
                 }
@@ -961,7 +1157,7 @@ internal class ChartShowcasePage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("客服时段热度")
+                            text("${page.currentHeatmapScenario().seriesName}热度分布")
                             fontSize(17f)
                             fontWeightBold()
                             color(primaryText)
@@ -969,7 +1165,9 @@ internal class ChartShowcasePage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("GitHub 贡献图式绿阶表达日期与时段的相对咨询热度；点击单元格可查看实际值。")
+                            page.currentHeatmapScenario().let { scenario ->
+                                text("${scenario.summary}：${scenario.columnCount} 列 × ${scenario.rowCount} 行，共 ${scenario.entries.size} 个单元格。数据更新可切换示例。")
+                            }
                             fontSize(12f)
                             color(secondaryText)
                             marginTop(4f)
@@ -1012,36 +1210,21 @@ internal class ChartShowcasePage : BasePager() {
                             height(246f)
                             theme = chartTheme
                             entrance { progress = page.chartEntranceProgress("heatmap") }
-                            seriesName = "客服咨询"
-                            data(
-                                *listOf(
-                                HeatmapEntry("周一", "09:00", 42f), HeatmapEntry("周二", "09:00", 58f),
-                                HeatmapEntry("周三", "09:00", 35f), HeatmapEntry("周四", "09:00", 74f),
-                                HeatmapEntry("周五", "09:00", 66f),
-                                HeatmapEntry("周一", "12:00", 81f), HeatmapEntry("周二", "12:00", 94f),
-                                HeatmapEntry("周三", "12:00", 72f), HeatmapEntry("周四", "12:00", 88f),
-                                HeatmapEntry("周五", "12:00", 97f),
-                                HeatmapEntry("周一", "15:00", 63f), HeatmapEntry("周二", "15:00", 76f),
-                                HeatmapEntry("周三", "15:00", 69f), HeatmapEntry("周四", "15:00", 83f),
-                                HeatmapEntry("周五", "15:00", 91f),
-                                HeatmapEntry("周一", "18:00", 39f), HeatmapEntry("周二", "18:00", 52f),
-                                HeatmapEntry("周三", "18:00", 47f), HeatmapEntry("周四", "18:00", 61f),
-                                HeatmapEntry("周五", "18:00", 56f),
-                                ).mapIndexed { index, entry ->
-                                    entry.copy(value = page.refreshedChartValue("heatmap", entry.value, index))
-                                }.toTypedArray(),
-                            )
+                            page.currentHeatmapScenario().let { scenario ->
+                                seriesName = scenario.seriesName
+                                data(*scenario.entries.toTypedArray())
+                            }
                             heatmap {
                                 cellGap = 4f
                                 showValueLabels = false
                                 colorScale = heatmapColorScale
                             }
-                            tooltip { valueFormatter = { value -> "${value.toInt()} 次" } }
+                            tooltip { valueFormatter = { value -> "${value.toInt()} 热度" } }
                         }
                         event {
                             onItemSelected {
                                 page.heatmapFeedbackTitle = "已选择 ${it.item.xLabel} ${it.item.yLabel}"
-                                page.heatmapFeedbackText = "${it.seriesName}：${it.item.value.toInt()} 次 · 原始索引 ${it.itemIndex}"
+                                page.heatmapFeedbackText = "${it.seriesName}：热度 ${it.item.value.toInt()} · 原始索引 ${it.itemIndex}"
                             }
                         }
                     }
