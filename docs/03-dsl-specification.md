@@ -29,7 +29,7 @@ LineChart {
 }
 ```
 
-`BarChart` 与 `AreaChart` 复用笛卡尔坐标、网格、Tooltip 与主题。`MixedChart` 使用 `barData` 和 `lineData` 接收分类系列，两类系列按输入索引共享分类槽和 Y 轴；`PieChart` 只复用主题、Tooltip、事件与格式化器，不伪造坐标轴 API。
+`BarChart` 与 `AreaChart` 复用笛卡尔坐标、网格、Tooltip 与主题。`MixedChart` 使用 `barData` 和 `lineData` 接收分类系列，两类系列按输入索引共享分类槽和 Y 轴；`PieChart` 只复用主题、Tooltip、事件与格式化器，不伪造坐标轴 API。`HeatmapChart` 使用 `HeatmapEntry(xLabel, yLabel, value)` 构建二维分类网格；`RadarChart` 使用 `ChartSeries<RadarEntry>`，所有非空系列必须共享至少三个、顺序一致且唯一的维度标签。
 
 ## 3. 数据模型
 
@@ -38,6 +38,8 @@ LineChart {
 | `ChartPoint` | `x: Double`、`y: Double` | 折线数据点；`label` 可选，用作 X 轴显示。 |
 | `BarEntry` | `value: Double`、`label: String` | 单组柱的分类数据。 |
 | `PieEntry` | `label: String`、`value: Double`、`color?` | 饼环扇区；非有限值、零和负值不参与布局。 |
+| `HeatmapEntry` | `xLabel: String`、`yLabel: String`、`value: Float`、`color?` | 二维分类单元格；相同坐标组合在 DSL 中拒绝，非有限值在渲染时跳过。 |
+| `RadarEntry` | `label: String`、`value: Float` | 雷达维度值；负值和非有限值成为断点，保留其他顶点的原始索引。 |
 | `ChartSeries<T>` | `name`、`items` | 同图多系列的数据与图例标识。 |
 | `ChartSelection<T>` | `seriesIndex`、`itemIndex`、`item` | 点击命中后的稳定回调载荷。 |
 | `MixedChartSelection` | `seriesType`、`seriesIndex`、`itemIndex`、`item` | 组合图回调；系列索引分别属于柱或线系列列表。 |
@@ -67,6 +69,10 @@ LineChart {
 | `pie.innerRadiusRatio` | `0.58` | `0` 为饼图，`(0, 0.85]` 为环图。 |
 | `pie.startAngleDegrees` | `-90` | 默认从十二点方向开始，必须为有限值。 |
 | `pie.gapAngleDegrees` | `1.5` | 扇区间隙范围为 `[0, 10]`；单扇区自动取消间隙。 |
+| `heatmap.cellGap` | `3` | 必须大于等于 0；实际间距会被单元格尺寸限制，避免负尺寸。 |
+| `heatmap.colorScale` | 空列表 | 空值使用 GitHub 风格的绿色深浅离散色阶；`ChartTheme.dark()` 使用深色适配绿阶。有值时按归一化热度选择颜色桶。 |
+| `radar.gridCount` | `5` | 范围为 `[2, 10]`；所有系列共享同一从零开始的漂亮刻度域。 |
+| `radar.fillColors` | 空列表 | 默认只描边；如启用填充，应提供半透明 ARGB，避免遮挡重叠系列。 |
 | `SparklineChart.selectable` | `false` | 默认不处理点击；开启后回调 `ChartSelection<ChartPoint>`。 |
 | `theme` | `ChartTheme.light()` | 内置 Light、Dark、Ocean、Sunset；系列显式颜色优先。 |
 

@@ -8,7 +8,7 @@
 2. [Canvas API](https://github.com/Tencent-TDS/KuiklyUI/blob/main/docs/API/components/canvas.md) 覆盖路径、贝塞尔曲线、弧、虚线、线性渐变、文本测量、裁剪和变换，足以在 `commonMain` 实现折线、柱、面积、饼环和 Tooltip；径向渐变是 iOS 实验性能力，首版不依赖它。
 3. 官方基础事件支持 `click`、`longPress(start/move/end)` 和 `pan`。长按追踪与水平平移是可验证的候选交互方向，但只有通过当前版本的能力探针后才能成为承诺能力。
 4. 官方 Canvas 源码提供 `batchDraw` 命令批量发送机制；高密度数据渲染先确认当前依赖版本可用，再启用。当前工程固定 Kuikly `2.7.0-2.1.21`，不能直接承诺使用较新版本的 API。
-5. 基础 `toImage` 能力在官方文档中标注为 Android/iOS/OpenHarmony 的 Kuikly `2.17+` 能力。图表导出图片是可选增强项，必须先完成升级兼容性验证，不能作为 P0 依赖。
+5. 基础 `toImage` 能力在官方文档中标注为 Android/iOS/OpenHarmony 的 Kuikly `2.17+` 能力。图表导出图片是可选增强项，必须先完成升级兼容性验证，不能作为 P0 依赖。当前 `2.7.0` 源码虽可编译该入口，但其注释仅说明 OpenHarmony；P2 因此只提供实验性一次性回调包装，不改变三端承诺。
 
 ## 官方组件范例的可借鉴点
 

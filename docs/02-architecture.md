@@ -30,20 +30,20 @@ class LineChartView : ComposeView<LineChartAttr, LineChartEvent>() {
 
 这使调用方沿用 Kuikly 熟悉的 `attr {}` 配置和 `event {}` 回调；公开 `View` 只负责组合，算法与绘制不泄漏到调用方。
 
-## 2. 推荐目录与职责
+## 2. 目录与职责
 
 ```text
 chartkit/src/commonMain/kotlin/com/kuikly/kuiklychartkit/chart/
-  model/          ChartPoint、BarEntry、AxisSpec、Theme、ChartSpec
-  dsl/            LineChart、BarChart 及配置构建器
-  layout/          标尺、刻度、标签测量、可绘制区域计算
-  render/          RenderPlan、LineRenderer、BarRenderer、AxisRenderer
-  interaction/     HitTestEngine、Selection、Tooltip
-  components/      对接 Kuikly Compose/Canvas 的公开视图
+  ChartModels.kt       公共数据模型和 Kuikly DSL 配置对象
+  ChartLayout.kt       纯 Kotlin 标尺、布局和采样算法
+  render/              不可变 ResolvedChartSpec 与 RenderPlan
+  interaction/         命中测试与选中状态转换
+  ChartComponents.kt   对接 Kuikly Compose/Canvas 的公开视图与临时绘制适配
+  P2Chart*.kt          热力图、雷达图；后续按相同边界逐步迁移
   accessibility/   图表摘要、选中项语义与替代文本
 ```
 
-`model` 与 `layout` 应尽量是纯 Kotlin，以便用 `commonTest` 进行确定性测试。`render` 只接收已计算好的 `RenderPlan`，不改变业务数据。`components` 负责监听数据/尺寸变化，触发布局、绘制和事件分发。
+`ChartModels`、`ChartLayout`、`render` 与 `interaction` 均保持纯 Kotlin，以便用 `commonTest` 进行确定性测试。`render` 只接收不可变配置快照并生成 `RenderPlan`，不改变业务数据。`ChartComponents` 负责监听数据/尺寸变化、触发绘制和事件分发；历史 Canvas 绘制代码会按图表类型渐进迁移，避免改变公开 DSL。
 
 ## 3. 核心数据流
 

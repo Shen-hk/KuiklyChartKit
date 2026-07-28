@@ -161,6 +161,73 @@ SparklineChart {
 }
 ```
 
+## 热力图示例
+
+`HeatmapChart` 使用平面分类网格。`xLabel/yLabel` 组合在一次 `data(...)` 调用中必须唯一；非有限值不绘制且不会改变其他单元格的原始索引。
+
+```kotlin
+HeatmapChart {
+    attr {
+        seriesName = "客服咨询"
+        data(
+            HeatmapEntry("周一", "09:00", 42f),
+            HeatmapEntry("周一", "12:00", 81f),
+            HeatmapEntry("周二", "09:00", 58f),
+            HeatmapEntry("周二", "12:00", 94f),
+        )
+        heatmap {
+            cellGap = 4f
+            colorScale = listOf(
+                Color(0xFF9BE9A8), Color(0xFF40C463),
+                Color(0xFF30A14E), Color(0xFF216E39),
+            )
+        }
+        tooltip { valueFormatter = { value -> "${value.toInt()} 次" } }
+    }
+    event { onItemSelected { selection -> onTimeSlotSelected(selection.item) } }
+}
+```
+
+## 雷达图示例
+
+`RadarChart` 的每个非空系列必须有至少三个维度，且维度标签顺序完全一致。负值和非有限值会成为断点而不导致渲染失败。
+
+```kotlin
+RadarChart {
+    attr {
+        data(
+            ChartSeries("当前", listOf(
+                RadarEntry("响应", 86f), RadarEntry("解决", 72f), RadarEntry("满意度", 91f),
+                RadarEntry("覆盖", 68f), RadarEntry("成本", 76f),
+            )),
+            ChartSeries("目标", listOf(
+                RadarEntry("响应", 80f), RadarEntry("解决", 82f), RadarEntry("满意度", 88f),
+                RadarEntry("覆盖", 84f), RadarEntry("成本", 72f),
+            )),
+        )
+        radar {
+            gridCount = 5
+            fillColors = listOf(Color(0x332563EB), Color(0x330D9488))
+        }
+    }
+    event { onItemSelected { selection -> onMetricSelected(selection.item) } }
+}
+```
+
+## 实验性导出
+
+图片导出尚未通过 Android、iOS、OpenHarmony 的正式验证，调用方必须显式 opt-in。默认 `DATA_URI` 不创建缓存型输出，回调内消费结果即可；若选择 `FILE`，由宿主负责文件清理与分享。
+
+```kotlin
+@OptIn(ExperimentalChartImageExportApi::class)
+fun shareChart(chart: LineChartView) {
+    chart.exportImage { result ->
+        if (result.isSuccess) shareDataUri(result.data.orEmpty())
+        else showExportError(result.message.orEmpty())
+    }
+}
+```
+
 ## 运行与接入检查清单
 
 - 依赖 `chartkit` 模块或已发布的同版本制品。
@@ -168,3 +235,4 @@ SparklineChart {
 - 网络加载、错误和重试由业务层处理，再向图表传入不可变数据列表。
 - 每个正式平台的示例 README 附截图、交互录屏和最低支持版本；不得只展示随机数据或空白 Canvas。
 - 若使用 H5 Showcase，明确它是实验性验证，并记录构建命令、浏览器版本和已知差异。
+- 图片导出在完成 Kuikly 升级、三端截图/录屏和内存回归前保持实验性，不能写入正式支持矩阵。
