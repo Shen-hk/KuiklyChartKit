@@ -10,9 +10,13 @@ import com.tencent.kuikly.core.reactive.handler.observable
 import com.tencent.kuikly.core.views.Canvas
 import com.tencent.kuikly.core.views.CanvasContext
 import com.tencent.kuikly.core.views.TextAlign
+import com.tencent.kuikly.core.views.View
 import com.kuikly.kuiklychartkit.chart.interaction.ChartSelectionState
 import com.kuikly.kuiklychartkit.chart.interaction.ChartHitTest
 import com.kuikly.kuiklychartkit.chart.interaction.ChartFrameAnimation
+import com.kuikly.kuiklychartkit.chart.interaction.ChartGestureContext
+import com.kuikly.kuiklychartkit.chart.interaction.ChartGestureController
+import com.kuikly.kuiklychartkit.chart.interaction.ChartGestureTouch
 import com.kuikly.kuiklychartkit.chart.render.LineRenderPlanFactory
 import com.kuikly.kuiklychartkit.chart.render.resolveRenderSpec
 import kotlin.math.PI
@@ -57,6 +61,9 @@ open class LineChartAttr : ComposeAttr() {
     /** Mutable options configured by [interaction]. */
     val interactionOptions = InteractionOptions()
 
+    /** Caller-controlled visible range. Assigning a new range redraws the chart. */
+    internal var viewport: ChartViewport? by observable(null)
+
     /** Mutable options configured by [dataTransition]. Disabled by default. */
     val dataTransitionOptions = DataTransitionOptions()
 
@@ -94,13 +101,8 @@ open class LineChartAttr : ComposeAttr() {
     /** Configures opt-in dense-data interaction. */
     fun interaction(block: InteractionOptions.() -> Unit) {
         interactionOptions.apply(block)
-        require(interactionOptions.visibleItemCount >= 0) { "interaction.visibleItemCount must be >= 0" }
-        require(interactionOptions.visibleItemCount == 0 || interactionOptions.visibleItemCount >= 2) {
-            "interaction.visibleItemCount must be 0 or >= 2"
-        }
-        require(interactionOptions.maxRenderPointCount == 0 || interactionOptions.maxRenderPointCount >= 4) {
-            "interaction.maxRenderPointCount must be 0 or >= 4"
-        }
+        interactionOptions.requireValid()
+        viewport = interactionOptions.viewport
     }
 
     /**
@@ -318,6 +320,12 @@ class MixedChartAttr : ComposeAttr() {
     /** Mutable line renderer options configured by [line]. */
     val lineOptions = LineOptions()
 
+    /** Mutable pan and controlled-viewport options configured by [interaction]. */
+    val interactionOptions = InteractionOptions()
+
+    /** Caller-controlled visible range. Assigning a new range redraws the chart. */
+    internal var viewport: ChartViewport? by observable(null)
+
     /** Replaces the categorical series rendered as bars. */
     fun barData(vararg value: ChartSeries<BarEntry>) {
         value.forEach { require(it.name.isNotBlank()) { "MixedChart bar series name must not be blank" } }
@@ -370,6 +378,13 @@ class MixedChartAttr : ComposeAttr() {
         require(lineOptions.pointRadius >= 0f) { "line.pointRadius must be >= 0" }
     }
 
+    /** Configures opt-in categorical viewport interaction. */
+    fun interaction(block: InteractionOptions.() -> Unit) {
+        interactionOptions.apply(block)
+        interactionOptions.requireValid()
+        viewport = interactionOptions.viewport
+    }
+
     /** Configures the chart-local entry reveal without animating its container. */
     fun entrance(block: EntranceOptions.() -> Unit) = EntranceOptions(entranceProgress).apply(block).also {
         entranceProgress = it.progress.coerceIn(0f, 1f)
@@ -397,6 +412,20 @@ private fun AxisOptions.applyValidated(block: AxisOptions.() -> Unit): AxisOptio
     require(max == null || max!!.isFinite()) { "axis.max must be finite" }
     require(min == null || max == null || min!! < max!!) { "axis.min must be < axis.max" }
     return this
+}
+
+private fun InteractionOptions.requireValid() {
+    require(visibleItemCount >= 0) { "interaction.visibleItemCount must be >= 0" }
+    require(visibleItemCount == 0 || visibleItemCount >= 2) {
+        "interaction.visibleItemCount must be 0 or >= 2"
+    }
+    require(minVisibleItemCount >= 1) { "interaction.minVisibleItemCount must be >= 1" }
+    require(maxVisibleItemCount == 0 || maxVisibleItemCount >= minVisibleItemCount) {
+        "interaction.maxVisibleItemCount must be 0 or >= interaction.minVisibleItemCount"
+    }
+    require(maxRenderPointCount == 0 || maxRenderPointCount >= 4) {
+        "interaction.maxRenderPointCount must be 0 or >= 4"
+    }
 }
 
 /** Event DSL emitted by [LineChartView], [AreaChartView] and [SparklineChartView]. */
@@ -453,6 +482,7 @@ class MixedChartEvent : ComposeEvent() {
     fun onItemSelected(handler: (MixedChartSelection) -> Unit) {
         itemSelectedHandler = handler
     }
+
 }
 
 /**
@@ -461,10 +491,10 @@ class MixedChartEvent : ComposeEvent() {
 abstract class CartesianLineChartView<A : LineChartAttr> : ComposeView<A, LineChartEvent>() {
     private var selectionState: ChartSelectionState<ChartSelection<ChartPoint>> by observable(ChartSelectionState())
     private var tracker: ChartTracker<ChartPoint>? by observable(null)
-    private var viewportStartIndex: Int by observable(LineViewportController.UNSET_START_INDEX)
+    private var viewportState: ChartViewport? by observable(null)
+    private var configuredViewport: ChartViewport? = null
     private var renderedPoints: List<RenderedLinePoint> = emptyList()
-    private var panStartX: Float? = null
-    private var panStartViewport: ChartViewport? = null
+    private val gestureController = ChartGestureController()
     private var dataTransitionFrom: List<ChartSeries<ChartPoint>>? = null
     private var dataTransitionTarget: List<ChartSeries<ChartPoint>>? = null
     private val dataTransitionAnimation = ChartFrameAnimation()
@@ -475,8 +505,11 @@ abstract class CartesianLineChartView<A : LineChartAttr> : ComposeView<A, LineCh
     override fun body(): ViewBuilder {
         val chart = this
         return {
-            Canvas({
-                attr { absolutePositionAllZero() }
+            View {
+                attr {
+                    absolutePositionAllZero()
+                    consumeTouchDown(true)
+                }
                 event {
                     click { params ->
                         if (!chart.selectionEnabled()) return@click
@@ -488,32 +521,44 @@ abstract class CartesianLineChartView<A : LineChartAttr> : ComposeView<A, LineCh
                         if (!chart.attr.tooltipOptions.trackerEnabled) return@longPress
                         when (params.state) {
                             "start", "move" -> chart.updateTracker(params.x)
-                            "end" -> if (!chart.attr.tooltipOptions.keepTrackerOnRelease) chart.clearTracker()
+                            "end" -> if (chart.gestureController.shouldClearTracker(chart.attr.tooltipOptions.keepTrackerOnRelease)) {
+                                chart.clearTracker()
+                            }
                         }
                     }
-                    pan { params ->
-                        if (!chart.attr.interactionOptions.enablePan || chart.tracker != null) return@pan
-                        when (params.state) {
-                            "start" -> chart.beginPan(params.x)
-                            "move" -> chart.updatePan(params.x)
-                            "end" -> chart.endPan()
-                        }
+                    doubleClick {
+                        chart.gestureController.onDoubleTap(chart.gestureContext())?.let(chart::updateViewport)
+                    }
+                    touchDown(isSync = true) { params ->
+                        chart.handleTouchStart(params.x, params.touches)
+                    }
+                    touchMove(isSync = true) { params ->
+                        chart.handleTouchMove(params.x, params.touches)
+                    }
+                    touchUp(isSync = true) { params ->
+                        chart.handleTouchEnd(params.touches)
+                    }
+                    touchCancel(isSync = true) { params ->
+                        chart.handleTouchEnd(params.touches)
                     }
                 }
-            }) { context, width, height ->
-                val displaySeries = chart.resolveDataTransition(chart.attr.series)
-                chart.renderedPoints = ChartCanvasPainter.drawLine(
-                    context = context,
-                    width = width,
-                    height = height,
-                    attr = chart.attr,
-                    series = displaySeries,
-                    scaleSeries = chart.dataTransitionScaleSeries(chart.attr.series),
-                    selected = chart.selectionState.selection,
-                    tracker = chart.tracker,
-                    viewport = chart.currentViewport(),
-                    areaOptions = chart.areaOptions(),
-                )
+                Canvas({
+                    attr { absolutePositionAllZero() }
+                }) { context, width, height ->
+                    val displaySeries = chart.resolveDataTransition(chart.attr.series)
+                    chart.renderedPoints = ChartCanvasPainter.drawLine(
+                        context = context,
+                        width = width,
+                        height = height,
+                        attr = chart.attr,
+                        series = displaySeries,
+                        scaleSeries = chart.dataTransitionScaleSeries(chart.attr.series),
+                        selected = chart.selectionState.selection,
+                        tracker = chart.tracker,
+                        viewport = chart.currentViewport(),
+                        areaOptions = chart.areaOptions(),
+                    )
+                }
             }
         }
     }
@@ -580,37 +625,61 @@ abstract class CartesianLineChartView<A : LineChartAttr> : ComposeView<A, LineCh
 
     private fun currentViewport(): ChartViewport? {
         val itemCount = attr.series.maxOfOrNull { it.items.size } ?: 0
-        return LineViewportController.resolve(itemCount, viewportStartIndex, attr.interactionOptions.visibleItemCount)
+        val requested = attr.viewport
+        if (requested != configuredViewport) {
+            configuredViewport = requested
+            viewportState = requested
+        }
+        val resolved = LineViewportController.resolve(
+            itemCount = itemCount,
+            requestedViewport = viewportState,
+            visibleItemCount = attr.interactionOptions.visibleItemCount,
+        )
+        if (viewportState != resolved) viewportState = resolved
+        return resolved
     }
 
-    private fun beginPan(x: Float) {
-        val viewport = currentViewport() ?: return
-        val itemCount = attr.series.maxOfOrNull { it.items.size } ?: return
-        if (!LineViewportController.isPannable(itemCount, viewport)) return
-        panStartX = x
-        panStartViewport = viewport
+    private fun handleTouchStart(x: Float, touches: List<com.tencent.kuikly.core.base.event.Touch>) {
+        if (tracker != null) return
+        gestureController.onTouchStart(x, touches.toGestureTouches(), gestureContext())?.let(::updateViewport)
     }
 
-    private fun updatePan(x: Float) {
-        val startX = panStartX ?: return
-        val startViewport = panStartViewport ?: return
-        val slotWidth = ChartHitTest.lineSlotWidth(renderedPoints) ?: return
-        val itemCount = attr.series.maxOfOrNull { it.items.size } ?: return
-        val deltaItems = ((startX - x) / slotWidth).roundToInt()
-        val updated = LineViewportController.pan(itemCount, startViewport, deltaItems)
-        if (updated.startIndex != viewportStartIndex) {
-            viewportStartIndex = updated.startIndex
+    private fun handleTouchMove(x: Float, touches: List<com.tencent.kuikly.core.base.event.Touch>) {
+        if (tracker != null) return
+        gestureController.onTouchMove(x, touches.toGestureTouches(), gestureContext())?.let(::updateViewport)
+    }
+
+    private fun handleTouchEnd(touches: List<com.tencent.kuikly.core.base.event.Touch>) {
+        gestureController.onTouchEnd(touches.size)
+    }
+
+    private fun gestureContext(): ChartGestureContext = ChartGestureContext(
+        itemCount = attr.series.maxOfOrNull { it.items.size } ?: 0,
+        viewport = currentViewport(),
+        resetViewport = attr.viewport,
+        visibleItemCount = attr.interactionOptions.visibleItemCount,
+        minVisibleItemCount = attr.interactionOptions.minVisibleItemCount,
+        maxVisibleItemCount = attr.interactionOptions.maxVisibleItemCount,
+        enablePan = attr.interactionOptions.enablePan,
+        enableZoom = attr.interactionOptions.enableZoom,
+        renderedPoints = renderedPoints,
+    )
+
+    private fun List<com.tencent.kuikly.core.base.event.Touch>.toGestureTouches(): List<ChartGestureTouch> = map {
+        ChartGestureTouch(it.x, it.y)
+    }
+
+    private fun updateViewport(updated: ChartViewport) {
+        val previous = currentViewport()
+        if (previous != updated) {
+            viewportState = updated
             event.viewportChangedHandler?.invoke(updated)
         }
     }
 
-    private fun endPan() {
-        panStartX = null
-        panStartViewport = null
-    }
-
     override fun viewDestroyed() {
         cancelDataTransition()
+        gestureController.clear()
         super.viewDestroyed()
     }
 }
@@ -630,6 +699,8 @@ internal object LineDataTransition {
                 val newPoint = newSeries.items[itemIndex]
                 oldPoint.x == newPoint.x &&
                     oldPoint.label == newPoint.label &&
+                    oldPoint.x.isFinite() &&
+                    newPoint.x.isFinite() &&
                     oldPoint.y.isFinite() &&
                     newPoint.y.isFinite()
             }
@@ -647,11 +718,14 @@ internal object LineDataTransition {
             targetSeries.copy(
                 items = targetSeries.items.mapIndexed { itemIndex, targetPoint ->
                     val sourcePoint = sourceSeries.items[itemIndex]
-                    targetPoint.copy(y = sourcePoint.y + (targetPoint.y - sourcePoint.y) * fraction)
+                    targetPoint.copy(y = interpolateFinite(sourcePoint.y, targetPoint.y, fraction))
                 },
             )
         }
     }
+
+    private fun interpolateFinite(from: Float, to: Float, fraction: Float): Float =
+        (from.toDouble() + (to.toDouble() - from.toDouble()) * fraction.toDouble()).toFloat()
 }
 
 /**
@@ -793,6 +867,8 @@ class PieChartView : ComposeView<PieChartAttr, PieChartEvent>() {
 class MixedChartView : ComposeView<MixedChartAttr, MixedChartEvent>() {
     private var selectionState: ChartSelectionState<MixedChartSelection> by observable(ChartSelectionState())
     private var rendered: RenderedMixedChart = RenderedMixedChart(emptyList(), emptyList())
+    private var viewportState: ChartViewport? by observable(null)
+    private var configuredViewport: ChartViewport? = null
 
     override fun createAttr() = MixedChartAttr()
     override fun createEvent() = MixedChartEvent()
@@ -821,9 +897,31 @@ class MixedChartView : ComposeView<MixedChartAttr, MixedChartEvent>() {
                     height = height,
                     attr = chart.attr,
                     selected = chart.selectionState.selection,
+                    viewport = chart.currentViewport(),
                 )
             }
         }
+    }
+
+    private fun itemCount(): Int = (attr.barSeries + attr.lineSeries).maxOfOrNull { it.items.size } ?: 0
+
+    private fun currentViewport(): ChartViewport? {
+        val requested = attr.viewport
+        if (requested != configuredViewport) {
+            configuredViewport = requested
+            viewportState = requested
+        }
+        val resolved = LineViewportController.resolve(
+            itemCount = itemCount(),
+            requestedViewport = viewportState,
+            visibleItemCount = attr.interactionOptions.visibleItemCount,
+        )
+        if (viewportState != resolved) viewportState = resolved
+        return resolved
+    }
+
+    override fun viewDestroyed() {
+        super.viewDestroyed()
     }
 }
 
@@ -1160,9 +1258,24 @@ private object ChartCanvasPainter {
         height: Float,
         attr: MixedChartAttr,
         selected: MixedChartSelection?,
+        viewport: ChartViewport?,
     ): RenderedMixedChart {
         fillRect(context, ChartRect(0f, 0f, width, height), attr.theme.backgroundColor)
-        val allSeries = attr.barSeries + attr.lineSeries
+        val sourceStartIndex = viewport?.startIndex ?: 0
+        fun visible(series: List<ChartSeries<BarEntry>>): List<ChartSeries<BarEntry>> = series.map { item ->
+            val endExclusive = if (viewport == null) {
+                item.items.size
+            } else {
+                (viewport.endIndex + 1).coerceAtMost(item.items.size)
+            }
+            item.copy(items = item.items.subList(
+                sourceStartIndex.coerceAtMost(item.items.size),
+                endExclusive,
+            ))
+        }
+        val barSeries = visible(attr.barSeries)
+        val lineSeries = visible(attr.lineSeries)
+        val allSeries = barSeries + lineSeries
         if (width <= 0f || height <= 0f ||
             allSeries.none { series -> series.items.any { it.value.isFinite() } }
         ) {
@@ -1174,8 +1287,8 @@ private object ChartCanvasPainter {
         val preliminary = ChartLayoutEngine.mixed(
             width = width,
             height = height,
-            barSeries = attr.barSeries,
-            lineSeries = attr.lineSeries,
+            barSeries = barSeries,
+            lineSeries = lineSeries,
             margins = ChartMargins(),
             tickCount = attr.yAxisOptions.tickCount,
             includeZero = attr.yAxisOptions.includeZero,
@@ -1186,8 +1299,8 @@ private object ChartCanvasPainter {
         val layout = ChartLayoutEngine.mixed(
             width = width,
             height = height,
-            barSeries = attr.barSeries,
-            lineSeries = attr.lineSeries,
+            barSeries = barSeries,
+            lineSeries = lineSeries,
             margins = ChartMargins(
                 left = if (attr.yAxisOptions.visible) yLabelWidth + 14f else 14f,
                 top = if (attr.legendOptions.visible) 32f else 16f,
@@ -1214,9 +1327,9 @@ private object ChartCanvasPainter {
 
         val renderedBars = mutableListOf<RenderedMixedBar>()
         val groupWidth = layout.slotWidth * attr.barOptions.barWidthRatio
-        val barWidth = (groupWidth / attr.barSeries.size.coerceAtLeast(1)).coerceAtLeast(1f)
+        val barWidth = (groupWidth / barSeries.size.coerceAtLeast(1)).coerceAtLeast(1f)
         val zeroY = layout.yFor(0f).coerceIn(layout.plot.top, layout.plot.bottom)
-        attr.barSeries.forEachIndexed { seriesIndex, series ->
+        barSeries.forEachIndexed { seriesIndex, series ->
             val color = series.color ?: attr.theme.palette[seriesIndex % attr.theme.palette.size]
             series.items.forEachIndexed { itemIndex, entry ->
                 if (!entry.value.isFinite() || itemIndex >= layout.categoryCount) return@forEachIndexed
@@ -1235,7 +1348,7 @@ private object ChartCanvasPainter {
                     selection = MixedChartSelection(
                         seriesType = MixedSeriesType.BAR,
                         seriesIndex = seriesIndex,
-                        itemIndex = itemIndex,
+                        itemIndex = sourceStartIndex + itemIndex,
                         seriesName = series.name,
                         item = entry,
                     ),
@@ -1246,8 +1359,8 @@ private object ChartCanvasPainter {
         val renderedLinePoints = mutableListOf<RenderedMixedLinePoint>()
         val lineRevealProgress = ((attr.entranceProgress.coerceIn(0f, 1f) - 0.35f) / 0.65f).coerceIn(0f, 1f)
         val lineRevealX = layout.plot.left + layout.plot.width * lineRevealProgress
-        attr.lineSeries.forEachIndexed { seriesIndex, series ->
-            val paletteIndex = attr.barSeries.size + seriesIndex
+        lineSeries.forEachIndexed { seriesIndex, series ->
+            val paletteIndex = barSeries.size + seriesIndex
             val color = series.color ?: attr.theme.palette[paletteIndex % attr.theme.palette.size]
             val segments = mutableListOf<MutableList<RenderedMixedLinePoint>>()
             var segment = mutableListOf<RenderedMixedLinePoint>()
@@ -1262,7 +1375,7 @@ private object ChartCanvasPainter {
                         selection = MixedChartSelection(
                             seriesType = MixedSeriesType.LINE,
                             seriesIndex = seriesIndex,
-                            itemIndex = itemIndex,
+                            itemIndex = sourceStartIndex + itemIndex,
                             seriesName = series.name,
                             item = entry,
                         ),

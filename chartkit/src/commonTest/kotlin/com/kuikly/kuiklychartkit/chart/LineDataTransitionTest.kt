@@ -50,10 +50,52 @@ class LineDataTransitionTest {
         val nonFinite = listOf(
             ChartSeries("load", listOf(ChartPoint(0f, 24f, "09:00"), ChartPoint(1f, Float.NaN, "09:15"))),
         )
+        val nonFiniteX = listOf(
+            ChartSeries("load", listOf(ChartPoint(0f, 24f, "09:00"), ChartPoint(Float.NaN, 48f, "09:15"))),
+        )
 
         assertFalse(LineDataTransition.isCompatible(source, changedX))
         assertFalse(LineDataTransition.isCompatible(source, nonFinite))
+        assertFalse(LineDataTransition.isCompatible(source, nonFiniteX))
         assertEquals(nonFinite, LineDataTransition.interpolate(source, nonFinite, 0.5f))
+    }
+
+    @Test
+    fun removingASeriesSkipsTransitionAndUsesTheNewSnapshot() {
+        val source = listOf(
+            ChartSeries("load", listOf(ChartPoint(0f, 24f))),
+            ChartSeries("capacity", listOf(ChartPoint(0f, 80f))),
+        )
+        val target = listOf(ChartSeries("load", listOf(ChartPoint(0f, 48f))))
+
+        assertFalse(LineDataTransition.isCompatible(source, target))
+        assertEquals(target, LineDataTransition.interpolate(source, target, 0.5f))
+    }
+
+    @Test
+    fun reorderingSeriesSkipsTransitionInsteadOfCrossingSeriesValues() {
+        val source = listOf(
+            ChartSeries("load", listOf(ChartPoint(0f, 24f))),
+            ChartSeries("capacity", listOf(ChartPoint(0f, 80f))),
+        )
+        val target = listOf(
+            ChartSeries("capacity", listOf(ChartPoint(0f, 90f))),
+            ChartSeries("load", listOf(ChartPoint(0f, 30f))),
+        )
+
+        assertFalse(LineDataTransition.isCompatible(source, target))
+        assertEquals(target, LineDataTransition.interpolate(source, target, 0.5f))
+    }
+
+    @Test
+    fun extremeFiniteValuesInterpolateWithoutOverflow() {
+        val source = listOf(ChartSeries("range", listOf(ChartPoint(0f, -Float.MAX_VALUE))))
+        val target = listOf(ChartSeries("range", listOf(ChartPoint(0f, Float.MAX_VALUE))))
+
+        val halfway = LineDataTransition.interpolate(source, target, 0.5f).single().items.single().y
+
+        assertTrue(halfway.isFinite())
+        assertEquals(0f, halfway)
     }
 
     @Test

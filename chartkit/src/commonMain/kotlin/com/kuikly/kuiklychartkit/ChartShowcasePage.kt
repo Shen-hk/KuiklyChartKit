@@ -189,7 +189,7 @@ internal class ChartShowcasePage : BasePager() {
 
     private var themeMode by observable(ShowcaseThemeMode.LIGHT)
     private var trendFeedbackTitle by observable("等待趋势交互")
-    private var trendFeedbackText by observable("点击数据点、长按追踪折线，或拖动趋势图浏览更多日期。")
+    private var trendFeedbackText by observable("单指左右拖动浏览日期；双指捏合缩放；双击复位。")
     private var areaFeedbackTitle by observable("等待面积图交互")
     private var areaFeedbackText by observable("点击或长按面积边界，查看每日成交金额。")
     private var pieFeedbackTitle by observable("等待饼环图交互")
@@ -1447,7 +1447,7 @@ internal class ChartShowcasePage : BasePager() {
                 View {
                     attr { marginTop(8f); marginBottom(9f) }
                     Text { attr { text("趋势分析"); fontSize(18f); fontWeightBold(); color(primaryText) } }
-                    Text { attr { text("多系列平滑折线、点击 Tooltip、长按追踪与横向平移。"); fontSize(12f); color(secondaryText); marginTop(3f) } }
+                    Text { attr { text("多系列平滑折线、单指平移、双指捏合缩放与双击复位。"); fontSize(12f); color(secondaryText); marginTop(3f) } }
                 }
                 View {
                     attr {
@@ -1466,7 +1466,7 @@ internal class ChartShowcasePage : BasePager() {
                     }
                     Text {
                         attr {
-                            text("长按图表比较“本周”和“上周”；左右拖动可切换 5 天可视窗口。")
+                            text("单指左右拖动平移；双指捏合缩放；双击回到默认窗口。")
                             fontSize(12f)
                             color(secondaryText)
                             marginTop(4f)
@@ -1543,7 +1543,10 @@ internal class ChartShowcasePage : BasePager() {
                             }
                             interaction {
                                 enablePan = true
+                                enableZoom = true
                                 visibleItemCount = 5
+                                minVisibleItemCount = 3
+                                maxVisibleItemCount = 8
                             }
                         }
                         event {
