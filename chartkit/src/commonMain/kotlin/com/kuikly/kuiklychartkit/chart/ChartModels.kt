@@ -276,8 +276,21 @@ class TooltipOptions {
 class InteractionOptions {
     /** Enables horizontal panning when the visible window is smaller than the data set. */
     var enablePan: Boolean = false
+    /** Enables two-finger zoom through the chart's touch host. */
+    var enableZoom: Boolean = false
     /** Requested number of items in the line-chart window; zero keeps every item visible. */
     var visibleItemCount: Int = 0
+    /** Smallest item count allowed after a pinch zoom. */
+    var minVisibleItemCount: Int = 2
+    /** Largest item count allowed after a pinch zoom; zero means all available items. */
+    var maxVisibleItemCount: Int = 0
+    /**
+     * Optional caller-owned viewport. It is clamped against the latest data before rendering.
+     *
+     * Supplying a new value resets the chart to that range. The rendered range always uses
+     * original input indexes.
+     */
+    var viewport: ChartViewport? = null
     /**
      * Maximum rendered points per visible series after min/max sampling.
      *

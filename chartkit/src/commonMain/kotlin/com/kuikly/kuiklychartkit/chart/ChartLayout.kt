@@ -9,6 +9,7 @@ import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 internal data class ChartRect(
     val left: Float,
@@ -203,7 +204,22 @@ internal object LineViewportController {
     const val UNSET_START_INDEX = -1
 
     fun resolve(itemCount: Int, requestedStartIndex: Int, visibleItemCount: Int): ChartViewport? {
+        return resolve(itemCount, null, requestedStartIndex, visibleItemCount)
+    }
+
+    fun resolve(
+        itemCount: Int,
+        requestedViewport: ChartViewport?,
+        requestedStartIndex: Int = UNSET_START_INDEX,
+        visibleItemCount: Int = 0,
+    ): ChartViewport? {
         if (itemCount <= 0) return null
+        requestedViewport?.let { viewport ->
+            val visibleCount = viewport.itemCount.coerceIn(1, itemCount)
+            val maxStartIndex = itemCount - visibleCount
+            val startIndex = viewport.startIndex.coerceIn(0, maxStartIndex)
+            return ChartViewport(startIndex, startIndex + visibleCount - 1)
+        }
         val visibleCount = if (visibleItemCount <= 0) itemCount else visibleItemCount.coerceIn(1, itemCount)
         val maxStartIndex = itemCount - visibleCount
         val startIndex = if (requestedStartIndex == UNSET_START_INDEX) {
@@ -220,6 +236,29 @@ internal object LineViewportController {
         val maxStartIndex = (itemCount - viewport.itemCount).coerceAtLeast(0)
         val startIndex = (viewport.startIndex + deltaItems).coerceIn(0, maxStartIndex)
         return ChartViewport(startIndex, startIndex + viewport.itemCount - 1)
+    }
+
+    /** Resolves a pinch scale around [focusIndex] while preserving original item indexes. */
+    fun zoom(
+        itemCount: Int,
+        viewport: ChartViewport,
+        focusIndex: Int,
+        scale: Float,
+        minVisibleItemCount: Int,
+        maxVisibleItemCount: Int,
+    ): ChartViewport {
+        if (itemCount <= 0 || !scale.isFinite() || scale <= 0f) return viewport
+        val minimum = minVisibleItemCount.coerceIn(1, itemCount)
+        val maximum = if (maxVisibleItemCount <= 0) itemCount else maxVisibleItemCount.coerceIn(minimum, itemCount)
+        val currentCount = viewport.itemCount.coerceIn(minimum, maximum)
+        val targetCount = (currentCount / scale).roundToInt().coerceIn(minimum, maximum)
+        val clampedFocus = focusIndex.coerceIn(0, itemCount - 1)
+        val focusFraction = if (viewport.itemCount <= 1) 0.5f else {
+            ((clampedFocus - viewport.startIndex).toFloat() / (viewport.itemCount - 1)).coerceIn(0f, 1f)
+        }
+        val startIndex = (clampedFocus - focusFraction * (targetCount - 1)).roundToInt()
+            .coerceIn(0, itemCount - targetCount)
+        return ChartViewport(startIndex, startIndex + targetCount - 1)
     }
 }
 

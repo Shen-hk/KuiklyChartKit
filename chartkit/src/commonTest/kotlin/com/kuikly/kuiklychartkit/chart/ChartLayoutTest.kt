@@ -130,6 +130,53 @@ class ChartLayoutEngineTest {
     }
 
     @Test
+    fun controlledViewportClampsToTheLatestAvailableOriginalIndexes() {
+        val viewport = LineViewportController.resolve(
+            itemCount = 6,
+            requestedViewport = ChartViewport(startIndex = 4, endIndex = 9),
+        )
+
+        assertNotNull(viewport)
+        assertEquals(0, viewport.startIndex)
+        assertEquals(5, viewport.endIndex)
+    }
+
+    @Test
+    fun pinchZoomKeepsTheFocusIndexAndHonorsTheConfiguredBounds() {
+        val source = ChartViewport(4, 11)
+        val zoomed = LineViewportController.zoom(
+            itemCount = 20,
+            viewport = source,
+            focusIndex = 9,
+            scale = 2f,
+            minVisibleItemCount = 3,
+            maxVisibleItemCount = 10,
+        )
+        val clampedOut = LineViewportController.zoom(
+            itemCount = 20,
+            viewport = zoomed,
+            focusIndex = 9,
+            scale = 100f,
+            minVisibleItemCount = 3,
+            maxVisibleItemCount = 10,
+        )
+        val clampedIn = LineViewportController.zoom(
+            itemCount = 20,
+            viewport = clampedOut,
+            focusIndex = 9,
+            scale = 0.001f,
+            minVisibleItemCount = 3,
+            maxVisibleItemCount = 10,
+        )
+
+        assertEquals(4, zoomed.itemCount)
+        assertTrue(9 in zoomed.startIndex..zoomed.endIndex)
+        assertEquals(3, clampedOut.itemCount)
+        assertEquals(10, clampedIn.itemCount)
+        assertTrue(9 in clampedIn.startIndex..clampedIn.endIndex)
+    }
+
+    @Test
     fun mixedLayoutSharesCategorySlotsAndNumericDomain() {
         val layout = ChartLayoutEngine.mixed(
             width = 320f,
@@ -503,5 +550,21 @@ class ChartDslValidationTest {
         }
 
         assertTrue(error.message.orEmpty().contains("interaction.maxRenderPointCount"))
+    }
+
+    @Test
+    fun interactionValidatesViewportZoomBounds() {
+        val minimum = assertFailsWith<IllegalArgumentException> {
+            LineChartAttr().interaction { minVisibleItemCount = 0 }
+        }
+        val maximum = assertFailsWith<IllegalArgumentException> {
+            MixedChartAttr().interaction {
+                minVisibleItemCount = 5
+                maxVisibleItemCount = 4
+            }
+        }
+
+        assertTrue(minimum.message.orEmpty().contains("interaction.minVisibleItemCount"))
+        assertTrue(maximum.message.orEmpty().contains("interaction.maxVisibleItemCount"))
     }
 }
