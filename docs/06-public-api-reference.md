@@ -52,12 +52,12 @@
 | `bars {}` | `mode`、`barWidthRatio`、`showValueLabels` | 单组、分组或堆叠柱。 |
 | `legend {}` | `visible`、`position`、`toggleSeriesOnTap` | 图例和系列可见性。 |
 | `tooltip {}` | `enabled`、`trackerEnabled`、`keepTrackerOnRelease`、`formatter` | 点击提示；折线/面积长按追踪和释放策略。 |
-| `interaction {}` | `enablePan`、`visibleItemCount`、`maxRenderPointCount` | 折线/面积水平平移、可视窗口与每系列采样上限；采样保留峰谷、坏点分段和原始索引。 |
+| `interaction {}` | `enablePan`、`enableZoom`、`visibleItemCount`、`minVisibleItemCount`、`maxVisibleItemCount`、`viewport`、`maxRenderPointCount` | 折线/面积图的单指平移、双指缩放、受控可视窗口与每系列采样上限；采样保留峰谷、坏点分段和原始索引。 |
 | `animation {}` | `enabled`、`durationMs`、`style` | 渐显或裁剪揭示，默认关闭。 |
 
 ## 回调与扩展优先级
 
-`onItemSelected` 接收 `ChartSelection<T>`。`HeatmapChart` 将选择回调到原始 `HeatmapEntry`，`RadarChart` 回调到原始 `RadarEntry`；二者的 `itemIndex` 均不因坏值过滤而重排。`LineChartEvent.onTrackerChanged` 接收 `ChartTracker<ChartPoint>?`；`null` 表示非持久追踪已释放或清除。`onViewportChanged` 返回平移后已钳制的 `ChartViewport`。`AreaChart` 复用同一事件类型。缩放尚未定稿。平台原生对象、Canvas 引用和手势原始坐标不暴露给使用方。
+`onItemSelected` 接收 `ChartSelection<T>`。`HeatmapChart` 将选择回调到原始 `HeatmapEntry`，`RadarChart` 回调到原始 `RadarEntry`；二者的 `itemIndex` 均不因坏值过滤而重排。`LineChartEvent.onTrackerChanged` 接收 `ChartTracker<ChartPoint>?`；`null` 表示非持久追踪已释放或清除。`onViewportChanged` 在平移、缩放和双击复位后返回已钳制的 `ChartViewport`；面积图复用 `LineChartEvent`。平台原生对象、Canvas 引用和手势原始坐标不暴露给使用方。
 
 格式化与渲染优先级固定为：调用方 `slot/renderer` > 系列显式配置 > `ChartTheme` > 内置默认实现。公共 API 不依赖 `internal` 的 Renderer、布局矩形或 Canvas 命令；新增字段必须有保留旧行为的默认值。
 

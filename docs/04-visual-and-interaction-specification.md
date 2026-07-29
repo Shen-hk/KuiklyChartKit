@@ -45,9 +45,11 @@
 | 雷达图点击 | 命中最近的可见顶点；选中后强化标记，Tooltip 显示系列、维度和值。 |
 | 组合图点击 | 线点命中优先；未命中线点时按柱体包围盒选择，并在回调中返回 `seriesType`。 |
 | 长按并移动 | 折线图和面积图可在 `tooltip.trackerEnabled=true` 时显示垂直追踪线与随手指移动的 Tooltip；每次移动命中同一 X 槽的所有可见系列。该行为已完成 Showcase 验收。 |
-| 水平平移（实验性） | 仅当 `interaction.enablePan=true` 且数据超过 `visibleItemCount` 时使用；拖动改变 `ChartViewport`，在首尾数据处钳制。当前仅有 Android/JS 编译和逻辑测试证据。 |
+| 水平平移 | 仅当 `interaction.enablePan=true` 且数据超过当前 `ChartViewport` 时使用；触摸层以单指 X 位移改变可视范围，在首尾数据处钳制。 |
+| 双指缩放 | 仅当 `interaction.enableZoom=true` 时使用；触摸层以两指距离变化计算缩放比例，并以两指中心最近的数据索引为锚点，在 `minVisibleItemCount..maxVisibleItemCount` 内改变 `ChartViewport`。 |
+| 双击复位 | 平移或缩放开启时生效；回到调用方 `interaction.viewport`，未提供时回到 `visibleItemCount` 的默认末尾窗口。 |
 
-首版不承诺双指缩放和惯性滚动。追踪和平移均必须显式开启；平移不得抢占外层滚动容器的常规手势。
+不承诺惯性滚动。触摸层手势必须显式开启，并且不得抢占外层滚动容器的常规手势。
 
 ## 4. 边界状态
 

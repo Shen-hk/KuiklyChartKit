@@ -20,8 +20,11 @@ LineChart {
             keepTrackerOnRelease = false
         }
         interaction {
-            enablePan = true // 实验性，默认 false
+            enablePan = true
+            enableZoom = true
             visibleItemCount = 20
+            minVisibleItemCount = 4
+            maxVisibleItemCount = 60 // 0 表示全部数据
             maxRenderPointCount = 240 // 0 按绘图区宽度自动计算
         }
     }
@@ -43,7 +46,7 @@ LineChart {
 | `ChartSeries<T>` | `name`、`items` | 同图多系列的数据与图例标识。 |
 | `ChartSelection<T>` | `seriesIndex`、`itemIndex`、`item` | 点击命中后的稳定回调载荷。 |
 | `MixedChartSelection` | `seriesType`、`seriesIndex`、`itemIndex`、`item` | 组合图回调；系列索引分别属于柱或线系列列表。 |
-| `ChartViewport` | `startIndex`、`endIndex`、`scale` | 候选密集数据浏览的可恢复状态；尚未成为 P0 契约。 |
+| `ChartViewport` | `startIndex`、`endIndex` | 笛卡尔图的受控可视范围；索引始终对应输入数据。 |
 
 折线图支持多系列；柱状图 P0 支持单系列，后续可显式支持 `GROUPED` 与 `STACKED`。模式切换是显式属性，不能静默改变柱宽或数值语义。
 
@@ -63,8 +66,12 @@ LineChart {
 | `tooltip.enabled` | `true` | P0 为点击提示。 |
 | `tooltip.trackerEnabled` | `false` | P1 折线/面积长按追踪；已完成 Showcase 验收，仍需显式开启。 |
 | `tooltip.keepTrackerOnRelease` | `false` | 仅在追踪开启时生效，控制 `end` 后是否保留最后选中槽。 |
-| `interaction.enablePan` | `false` | P1 折线/面积水平平移；已完成 Showcase 验收，仍需显式开启。 |
+| `interaction.enablePan` | `false` | 折线、面积和组合图的水平平移；仅在数据超出当前窗口时生效。 |
+| `interaction.enableZoom` | `false` | 折线、面积图的双指缩放；双击会复位到 `viewport` 或默认窗口。 |
 | `interaction.visibleItemCount` | `0` | `0` 显示全部数据；非零值必须至少为 2，初始窗口默认对齐末尾数据。 |
+| `interaction.minVisibleItemCount` | `2` | 缩放后的最小可视数据量，必须大于等于 1。 |
+| `interaction.maxVisibleItemCount` | `0` | 缩放后的最大可视数据量；`0` 表示全部数据，非零值不得小于 `minVisibleItemCount`。 |
+| `interaction.viewport` | `null` | 可选的调用方受控 `ChartViewport`；每次新配置会钳制到当前数据范围，手势回调返回原始索引。 |
 | `interaction.maxRenderPointCount` | `0` | 折线/面积/Sparkline 每个可见系列的最大绘制点数；`0` 按绘图区宽度自动计算，显式值必须至少为 4。超限时用 min/max 桶采样保留首尾、峰谷、坏点分段和原始索引。 |
 | `pie.innerRadiusRatio` | `0.58` | `0` 为饼图，`(0, 0.85]` 为环图。 |
 | `pie.startAngleDegrees` | `-90` | 默认从十二点方向开始，必须为有限值。 |

@@ -2,7 +2,7 @@
 
 KuiklyChartKit 是面向通用数据可视化场景的 Kuikly 跨端图表组件库，对应 [KuiklyUI Issue #1477](https://github.com/Tencent-TDS/KuiklyUI/issues/1477)。总体目标是交付可复用、可扩展、可验证的图表基础能力，而不是面向某个行业或业务 Demo 的专用图表库。
 
-当前已完成 P0/M0 的折线图、柱状图、Kuikly 官方风格声明式 DSL、点击选择和基础 Tooltip；长按追踪、水平平移、面积图、饼环图、组合图和 Sparkline 已完成，P1 密集数据采样、异常数据回归、本机自动化证据及人工验收也已收口。P2 首批已接入热力图、雷达图和一次性图片导出封装；导出仍为实验 API，成为发布候选前仍需完成 Kuikly 升级，以及 Android、iOS、OpenHarmony 的正式截图/录屏、内存检查与设备记录。
+当前能力按“已验证 / 实现中 / 候选”分级展示，并把代码、测试和平台证据分开陈述。P0/P1 已覆盖折线、柱状、面积、饼环、组合与 Sparkline；P2 已提供热力、雷达和一次性图片导出封装。图片导出仍是实验 API，P3 手势也尚未取得 Android、iOS、OpenHarmony 的完整真机证据，因此不宣称三端正式可用。
 
 > 当前基线：Kuikly `2.7.0` · Kotlin `2.1.21`
 
@@ -25,10 +25,18 @@ KuiklyChartKit 是面向通用数据可视化场景的 Kuikly 跨端图表组件
 | 折线水平平移 | P1 已验收 | 默认关闭；可配置可视点窗口，范围变化返回钳制后的原始索引。 |
 | 密集数据采样 | P1 已完成 | 折线、面积与 Sparkline 共用 min/max 桶采样；保留峰谷、坏点分段和原始索引，可配置每系列绘制上限。 |
 | 图片导出 | P2 实验性 | `exportImage` 默认返回一次性 `DATA_URI`，不保留缓存型图像；当前基线尚无三端真机验证，不能宣称跨端导出支持。 |
-| 缩放 | 候选扩展 | 需通过能力探针后再进入公共 API。 |
-| Showcase/性能证据 | P1/P2 已验证 | Performance Lab 覆盖 100/1,000/5,000 点；38 项测试、Android 单测与包含 P2 卡片的 H5 发布构建通过。正式三端视觉证据待补。 |
+| P3-1 手势视口 | 实现中 | `ChartGestureController` 作为纯 Kotlin 内核处理 pan、pinch focal 和双击复位；`commonTest` 覆盖钳制、焦点、复位、tracker release 和非有限值。仍缺 Android 真机、APK 与 iOS/OpenHarmony 证据。详见 [P3 路线](docs/15-p3-interaction-data-roadmap.md)。 |
+| P3-2 Crosshair / Brush | 候选，默认关闭 | 已明确为不抢占点击、追踪和平移的独立状态机；先完成 P3-1 三端验收，再交付可选十字准星、区间框选、缩放至选区和清除。详见 [P3 路线](docs/15-p3-interaction-data-roadmap.md)。 |
+| 数据更新动画 | 已实现，补强测试 | 兼容快照仅对 Y 值插值；删除/重排 series 或非有限值立即切换，极值插值以 `Double` 中间值避免溢出。 |
+| 证据与限制 | 部分已验证 | Performance Lab 覆盖 100/1,000/5,000 点；自动化测试、Android 单测和 H5 发布构建有记录。正式三端视觉、手势和导出证据仍待补，详见 [验收记录](docs/12-p1-implementation-status.md) 与 [P2 状态](docs/13-p2-implementation-status.md)。 |
 
-已实现功能与验证记录见 [M0 实现与验收记录](docs/11-m0-implementation-status.md) 和 [P1 实现与验收记录](docs/12-p1-implementation-status.md)；完整范围和路线见 [开发文档索引](docs/README.md)。
+### 能力等级与证据
+
+- **已验证**：至少有公共 DSL、示例、自动化测试和对应构建记录；不等同于所有正式平台均已验收。
+- **实现中**：代码与 commonTest 已进入仓库，但关键平台证据或 API 稳定性尚未收口。
+- **候选**：已有规格与验收条件，尚未作为可承诺功能发布。
+
+证据索引见 [M0 实现与验收记录](docs/11-m0-implementation-status.md)、[P1 实现与验收记录](docs/12-p1-implementation-status.md)、[P2 实现与验收记录](docs/13-p2-implementation-status.md)、[P3 路线](docs/15-p3-interaction-data-roadmap.md) 和 [测试计划](docs/08-test-plan.md)。
 
 ## 构建
 
