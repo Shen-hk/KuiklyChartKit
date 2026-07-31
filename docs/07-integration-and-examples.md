@@ -15,17 +15,18 @@
 
 ## 折线图示例
 
-下列代码是目标 API 形态；实现后必须编译运行并与 KDoc 一致。
+下列示例均对应当前可用 API。推荐用嵌套数据 DSL 减少 `ChartSeries`、`listOf` 和手工索引的样板代码；已有仓储数据可继续直接传入 `ChartSeries` 与 Entry 模型。
 
 ```kotlin
 LineChart {
     attr {
-        data(ChartSeries("访问量", listOf(
-            ChartPoint(1.0, 120.0, "周一"),
-            ChartPoint(2.0, 168.0, "周二"),
-            ChartPoint(3.0, 142.0, "周三"),
-        ), Color(0xFF2F80ED)))
-        xAxis { labelFormatter { point, _ -> point.label.orEmpty() } }
+        data {
+            series("访问量", Color(0xFF2F80ED)) {
+                point("周一", 120f)
+                point("周二", 168f)
+                point("周三", 142f)
+            }
+        }
         yAxis { tickCount = 4; includeZero = false }
         line { smooth = true; showPoints = true }
         tooltip { enabled = true }
@@ -39,9 +40,11 @@ LineChart {
 ```kotlin
 BarChart {
     attr {
-        data(ChartSeries("转化", listOf(
-            BarEntry(86.0, "A"), BarEntry(132.0, "B"), BarEntry(109.0, "C")
-        ), Color(0xFF27AE60)))
+        data {
+            series("转化", Color(0xFF27AE60)) {
+                item("A", 86f); item("B", 132f); item("C", 109f)
+            }
+        }
         yAxis { includeZero = true; tickCount = 5 }
         bars { mode = BarMode.GROUPED; showValueLabels = true }
     }
@@ -82,12 +85,12 @@ AreaChart {
 PieChart {
     attr {
         seriesName = "渠道订单"
-        data(
-            PieEntry("推荐", 420f),
-            PieEntry("搜索", 260f),
-            PieEntry("直播", 190f),
-            PieEntry("其他", 130f),
-        )
+        data {
+            slice("推荐", 420f)
+            slice("搜索", 260f)
+            slice("直播", 190f)
+            slice("其他", 130f)
+        }
         pie {
             innerRadiusRatio = 0.58f
             startAngleDegrees = -90f
@@ -107,18 +110,8 @@ PieChart {
 ```kotlin
 MixedChart {
     attr {
-        barData(
-            ChartSeries(
-                "实际收入",
-                listOf(BarEntry("周一", 86f), BarEntry("周二", 112f)),
-            ),
-        )
-        lineData(
-            ChartSeries(
-                "目标收入",
-                listOf(BarEntry("周一", 96f), BarEntry("周二", 105f)),
-            ),
-        )
+        barData { series("实际收入") { item("周一", 86f); item("周二", 112f) } }
+        lineData { series("目标收入") { item("周一", 96f); item("周二", 105f) } }
         bars { showValueLabels = false }
         line { smooth = true; showPoints = true }
         tooltip { valueFormatter = { value -> "¥${value.toInt()}K" } }
@@ -169,12 +162,12 @@ SparklineChart {
 HeatmapChart {
     attr {
         seriesName = "客服咨询"
-        data(
-            HeatmapEntry("周一", "09:00", 42f),
-            HeatmapEntry("周一", "12:00", 81f),
-            HeatmapEntry("周二", "09:00", 58f),
-            HeatmapEntry("周二", "12:00", 94f),
-        )
+        data {
+            cell("周一", "09:00", 42f)
+            cell("周一", "12:00", 81f)
+            cell("周二", "09:00", 58f)
+            cell("周二", "12:00", 94f)
+        }
         heatmap {
             cellGap = 4f
             colorScale = listOf(
@@ -195,16 +188,16 @@ HeatmapChart {
 ```kotlin
 RadarChart {
     attr {
-        data(
-            ChartSeries("当前", listOf(
-                RadarEntry("响应", 86f), RadarEntry("解决", 72f), RadarEntry("满意度", 91f),
-                RadarEntry("覆盖", 68f), RadarEntry("成本", 76f),
-            )),
-            ChartSeries("目标", listOf(
-                RadarEntry("响应", 80f), RadarEntry("解决", 82f), RadarEntry("满意度", 88f),
-                RadarEntry("覆盖", 84f), RadarEntry("成本", 72f),
-            )),
-        )
+        data {
+            series("当前") {
+                metric("响应", 86f); metric("解决", 72f); metric("满意度", 91f)
+                metric("覆盖", 68f); metric("成本", 76f)
+            }
+            series("目标") {
+                metric("响应", 80f); metric("解决", 82f); metric("满意度", 88f)
+                metric("覆盖", 84f); metric("成本", 72f)
+            }
+        }
         radar {
             gridCount = 5
             fillColors = listOf(Color(0x332563EB), Color(0x330D9488))

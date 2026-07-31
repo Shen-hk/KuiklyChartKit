@@ -1,5 +1,7 @@
 # 视觉与交互规范
 
+> 数据可以通过简洁嵌套 DSL 或直接 Entry/`ChartSeries` 模型输入；两种方式必须生成相同的布局、颜色、命中区域和回调索引。本文件定义的视觉行为不得因输入写法而变化。
+
 ## 1. 绘制顺序与几何
 
 绘制顺序固定为：背景 -> 网格 -> 坐标轴 -> 数据图形 -> 数据标签 -> 选中高亮 -> Tooltip。`plotRect` 是扣除标题、图例、轴标签、内外边距后的唯一数据绘制区域；任何线、柱、点均不得溢出它。Tooltip 由 Compose 覆盖层渲染，必要时翻转方向以留在整个视图内。
@@ -45,9 +47,11 @@
 | 雷达图点击 | 命中最近的可见顶点；选中后强化标记，Tooltip 显示系列、维度和值。 |
 | 组合图点击 | 线点命中优先；未命中线点时按柱体包围盒选择，并在回调中返回 `seriesType`。 |
 | 长按并移动 | 折线图和面积图可在 `tooltip.trackerEnabled=true` 时显示垂直追踪线与随手指移动的 Tooltip；每次移动命中同一 X 槽的所有可见系列。该行为已完成 Showcase 验收。 |
-| 水平平移 | 仅当 `interaction.enablePan=true` 且数据超过当前 `ChartViewport` 时使用；触摸层以单指 X 位移改变可视范围，在首尾数据处钳制。 |
+| 水平平移 | 仅当 `interaction.enablePan=true` 且数据超过当前 `ChartViewport` 时使用；触摸层以单指 X 位移连续平移图形层，视口仍以原始整数索引提交。在首尾数据处钳制且不产生橡皮筋；松手后用约 120ms 吸附到最近窗口。 |
 | 双指缩放 | 仅当 `interaction.enableZoom=true` 时使用；触摸层以两指距离变化计算缩放比例，并以两指中心最近的数据索引为锚点，在 `minVisibleItemCount..maxVisibleItemCount` 内改变 `ChartViewport`。 |
 | 双击复位 | 平移或缩放开启时生效；回到调用方 `interaction.viewport`，未提供时回到 `visibleItemCount` 的默认末尾窗口。 |
+| Crosshair | 仅当 `crosshair.enabled=true` 且 tracker 已命中时绘制；复用 RenderPlan 的 tracker 点，增加穿过锚点的水平虚线，不重新从原始数据推导坐标。 |
+| Brush | 仅当 `brush.enabled=true` 时以长按在绘图区开始；拖拽范围按最近渲染 X 槽映射为递增的原始索引闭区间。Brush 与 tracker 互斥，双击优先清除选区；可选在释放时缩放至该范围。 |
 
 不承诺惯性滚动。触摸层手势必须显式开启，并且不得抢占外层滚动容器的常规手势。
 

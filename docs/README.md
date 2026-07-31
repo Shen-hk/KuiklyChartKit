@@ -2,14 +2,14 @@
 
 本目录是图表组件的设计、实现与验收依据。文档以 [KuiklyUI Issue #1477](https://github.com/Tencent-TDS/KuiklyUI/issues/1477) 为需求来源，并以仓库的 Kotlin Multiplatform、Kuikly 与 Canvas 配置为实现基线。
 
-总体目标是构建通用、可维护的跨端图表组件库：先交付折线图、柱状图和符合 Kuikly 习惯的 Kotlin DSL，再根据能力探针和质量门槛评估交互、扩展图表与性能能力。行业专用图表、业务 Demo 或平台范围扩张不属于既定目标，需单独确认后才可纳入计划。
+总体目标是构建通用、可维护的跨端图表组件库：交付折线图、柱状图和符合 Kuikly 习惯的 Kotlin DSL，并在同一数据契约上扩展面积、饼环、组合、Sparkline、热力和雷达图。公共数据 DSL 现已支持 `data { series { point/item/metric } }`、`slice(...)` 与 `cell(...)` 的简洁写法，同时保留直接传入 `ChartSeries`/Entry 模型的写法，便于接入已有状态层数据。行业专用图表、业务 Demo 或平台范围扩张不属于既定目标，需单独确认后才可纳入计划。
 
 | 阶段 | 文档 | 目的 |
 | --- | --- | --- |
 | 调研 | [00-调研依据](00-research-notes.md) | 记录官方能力、对标基线与版本约束。 |
 | 编码前 | [01-需求与验收](01-requirements-and-acceptance.md) | 固化范围、优先级与完成定义。 |
 | 编码前 | [02-总体技术设计](02-architecture.md) | 约束模块划分、渲染链路和扩展边界。 |
-| 编码前 | [03-DSL 规范](03-dsl-specification.md) | 定义稳定的开发者契约。 |
+| 编码中 | [03-DSL 规范](03-dsl-specification.md) | 定义稳定的开发者契约和推荐的嵌套数据 DSL。 |
 | 编码前 | [04-视觉与交互规范](04-visual-and-interaction-specification.md) | 明确绘制、命中与交互细节。 |
 | 编码前 | [05-平台兼容与适配矩阵](05-platform-compatibility.md) | 约束正式支持和验证范围。 |
 | 实现中 | [06-公共 API](06-public-api-reference.md) | 面向使用者的 API 参考。 |

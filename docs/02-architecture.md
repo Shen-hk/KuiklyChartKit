@@ -5,7 +5,7 @@
 图表内核只依赖 Kuikly 的公共 Canvas/Compose 能力，所有数据计算与绘制计划放在 `chartkit/src/commonMain`。平台宿主只负责启动 Kuikly 页面与提供运行环境，不承载图表业务逻辑。组件表面严格采用官方的 `ComposeView<Attr, Event>` 模式。
 
 ```text
-开发者 DSL
+开发者 DSL（嵌套数据构建器或直接不可变模型）
     -> 不可变 ChartSpec
     -> 数据校验与规范化
     -> LayoutEngine（坐标域、刻度、标签、绘制区域）
@@ -35,6 +35,7 @@ class LineChartView : ComposeView<LineChartAttr, LineChartEvent>() {
 ```text
 chartkit/src/commonMain/kotlin/com/kuikly/kuiklychartkit/chart/
   ChartModels.kt       公共数据模型和 Kuikly DSL 配置对象
+  ChartDataDsl.kt      Point/Bar/Pie/Heatmap/Radar 的嵌套数据构建器
   ChartLayout.kt       纯 Kotlin 标尺、布局和采样算法
   render/              不可变 ResolvedChartSpec 与 RenderPlan
   interaction/         命中测试与选中状态转换
@@ -47,7 +48,7 @@ chartkit/src/commonMain/kotlin/com/kuikly/kuiklychartkit/chart/
 
 ## 3. 核心数据流
 
-1. DSL 构建 `ChartSpec`，并在构建结束时检查必填项与范围。
+1. DSL 用嵌套构建器或直接模型构建不可变数据快照，并在提交给组件时检查必填项与范围。
 2. 规范化步骤过滤无效值、计算数据域；所有值相等时扩展一个安全范围，防止除零。
 3. `LayoutEngine` 根据视图宽高、边距和文字测量结果计算 `plotRect`、刻度与标签位置。
 4. Renderer 将布局转换为 Canvas 原语，并同时保留数据项的屏幕包围盒/点位以供命中测试；复杂图在 Canvas 回调中开启批量绘制（仅能力探针通过时）。

@@ -2,22 +2,33 @@
 
 ## 1. 契约目标
 
-DSL 是组件最重要的兼容面：调用方只需声明数据与外观，无需关心 Canvas、像素坐标或平台差异。它遵循 Kuikly 官方的 ComposeView 习惯：扩展函数创建组件，`attr {}` 管理状态和视觉配置，`event {}` 管理外部回调。以下是首版的公共契约；实现时应以此命名并补充 KDoc，变更须走语义化版本升级。
+DSL 是组件最重要的兼容面：调用方只需声明数据与外观，无需关心 Canvas、像素坐标或平台差异。它遵循 Kuikly 的 ComposeView 习惯：扩展函数创建组件，`attr {}` 管理状态和视觉配置，`event {}` 管理外部回调。数据层同时提供推荐的嵌套构建器和兼容的直接模型写法；二者输出相同的不可变快照并使用同一套校验。已发布符号均有 KDoc；新增或破坏性修改须走语义化版本升级。
 
 ## 2. 通用结构
 
 ```kotlin
 LineChart {
     attr {
-        data(ChartSeries("活跃用户", weeklyPoints, Color(0xFF2F80ED)))
-        xAxis { labelFormatter { point, _ -> point.label.orEmpty() } }
+        data {
+            series("活跃用户", Color(0xFF2F80ED)) {
+                point("周一", 120f)
+                point("周二", 168f)
+                point(x = 3f, value = 142f, label = "周三")
+            }
+        }
+        xAxis { labelFormatter = { value -> "第 ${value.toInt() + 1} 天" } }
         yAxis { tickCount = 5; includeZero = false }
-        grid { visible = true; color = Color(0xFFE9EDF3) }
-        line { smooth = true; showPoints = true; showValueLabels = false }
+        grid { visible = true; lineWidth = 1f }
+        line { smooth = true; showPoints = true }
         tooltip {
             enabled = true
             trackerEnabled = true // 实验性，默认 false
             keepTrackerOnRelease = false
+        }
+        crosshair { enabled = true } // tracker 命中时追加水平参考线，默认 false
+        brush {
+            enabled = false // 显式开启后由长按拖拽选择原始索引区间
+            zoomToSelectionOnRelease = false
         }
         interaction {
             enablePan = true
@@ -32,23 +43,26 @@ LineChart {
 }
 ```
 
-`BarChart` 与 `AreaChart` 复用笛卡尔坐标、网格、Tooltip 与主题。`MixedChart` 使用 `barData` 和 `lineData` 接收分类系列，两类系列按输入索引共享分类槽和 Y 轴；`PieChart` 只复用主题、Tooltip、事件与格式化器，不伪造坐标轴 API。`HeatmapChart` 使用 `HeatmapEntry(xLabel, yLabel, value)` 构建二维分类网格；`RadarChart` 使用 `ChartSeries<RadarEntry>`，所有非空系列必须共享至少三个、顺序一致且唯一的维度标签。
+推荐的数据构建器为：折线、面积与 Sparkline 使用 `data { series { point(...) } }`，柱状使用 `data { series { item(...) } }`，组合图分别使用 `barData { series { item(...) } }` 和 `lineData { ... }`，饼环使用 `data { slice(...) }`，热力使用 `data { cell(...) }`，雷达使用 `data { series { metric(...) } }`。`point(label, value)` 自动生成从零开始的 X 坐标；需要连续时间戳或数值比例时使用 `point(x, value, label)`。直接传入 `ChartSeries`、`ChartPoint` 和 Entry 对象的旧写法保持兼容，适合复用已有数据快照。
+
+`BarChart` 与 `AreaChart` 复用笛卡尔坐标、网格、Tooltip 与主题。`MixedChart` 的柱/线系列按输入索引共享分类槽和 Y 轴；`PieChart` 只复用主题、Tooltip、事件与格式化器，不伪造坐标轴 API。所有非空 `RadarChart` 系列必须共享至少三个、顺序一致且唯一的维度标签。
 
 ## 3. 数据模型
 
 | 类型 | 必填字段 | 语义 |
 | --- | --- | --- |
-| `ChartPoint` | `x: Double`、`y: Double` | 折线数据点；`label` 可选，用作 X 轴显示。 |
-| `BarEntry` | `value: Double`、`label: String` | 单组柱的分类数据。 |
-| `PieEntry` | `label: String`、`value: Double`、`color?` | 饼环扇区；非有限值、零和负值不参与布局。 |
+| `ChartPoint` | `x: Float`、`y: Float`、`label?` | 折线数据点；`label` 可选，用作 X 轴显示。 |
+| `BarEntry` | `label: String`、`value: Float` | 单组柱的分类数据。 |
+| `PieEntry` | `label: String`、`value: Float`、`color?` | 饼环扇区；非有限值、零和负值不参与布局。 |
 | `HeatmapEntry` | `xLabel: String`、`yLabel: String`、`value: Float`、`color?` | 二维分类单元格；相同坐标组合在 DSL 中拒绝，非有限值在渲染时跳过。 |
 | `RadarEntry` | `label: String`、`value: Float` | 雷达维度值；负值和非有限值成为断点，保留其他顶点的原始索引。 |
 | `ChartSeries<T>` | `name`、`items` | 同图多系列的数据与图例标识。 |
 | `ChartSelection<T>` | `seriesIndex`、`itemIndex`、`item` | 点击命中后的稳定回调载荷。 |
 | `MixedChartSelection` | `seriesType`、`seriesIndex`、`itemIndex`、`item` | 组合图回调；系列索引分别属于柱或线系列列表。 |
 | `ChartViewport` | `startIndex`、`endIndex` | 笛卡尔图的受控可视范围；索引始终对应输入数据。 |
+| `ChartBrushSelection` | `startIndex`、`endIndex` | 可选 Brush 的稳定原始索引闭区间，始终按递增顺序输出。 |
 
-折线图支持多系列；柱状图 P0 支持单系列，后续可显式支持 `GROUPED` 与 `STACKED`。模式切换是显式属性，不能静默改变柱宽或数值语义。
+折线图支持多系列；柱状图支持 `SINGLE` 和默认的 `GROUPED`。模式切换是显式属性，不能静默改变柱宽或数值语义。
 
 组合图的柱系列和线系列均使用 `ChartSeries<BarEntry>`：`BarEntry.label` 定义分类标签，输入索引定义共享 X 槽，`value` 进入同一个 Y 轴数据域。线点命中优先于其下方柱体；离开线点命中半径后再回落到柱命中。
 
@@ -66,6 +80,9 @@ LineChart {
 | `tooltip.enabled` | `true` | P0 为点击提示。 |
 | `tooltip.trackerEnabled` | `false` | P1 折线/面积长按追踪；已完成 Showcase 验收，仍需显式开启。 |
 | `tooltip.keepTrackerOnRelease` | `false` | 仅在追踪开启时生效，控制 `end` 后是否保留最后选中槽。 |
+| `crosshair.enabled` | `false` | 仅对折线/面积 tracker 生效；开启后在既有垂直追踪线基础上增加水平参考线。 |
+| `brush.enabled` | `false` | 折线/面积图的实验性长按框选；开启时独占长按，不改变点击、双指缩放或普通平移。 |
+| `brush.zoomToSelectionOnRelease` | `false` | 仅在 Brush 开启时生效；释放后将选中的原始索引区间写入视口。双击优先清除已有选区。 |
 | `interaction.enablePan` | `false` | 折线、面积和组合图的水平平移；仅在数据超出当前窗口时生效。 |
 | `interaction.enableZoom` | `false` | 折线、面积图的双指缩放；双击会复位到 `viewport` 或默认窗口。 |
 | `interaction.visibleItemCount` | `0` | `0` 显示全部数据；非零值必须至少为 2，初始窗口默认对齐末尾数据。 |
@@ -73,12 +90,15 @@ LineChart {
 | `interaction.maxVisibleItemCount` | `0` | 缩放后的最大可视数据量；`0` 表示全部数据，非零值不得小于 `minVisibleItemCount`。 |
 | `interaction.viewport` | `null` | 可选的调用方受控 `ChartViewport`；每次新配置会钳制到当前数据范围，手势回调返回原始索引。 |
 | `interaction.maxRenderPointCount` | `0` | 折线/面积/Sparkline 每个可见系列的最大绘制点数；`0` 按绘图区宽度自动计算，显式值必须至少为 4。超限时用 min/max 桶采样保留首尾、峰谷、坏点分段和原始索引。 |
+| `dataTransition.enabled` | `false` | Line/Area/Sparkline、Bar、Pie、Mixed、Heatmap 和 Radar 的兼容快照值动画；默认关闭，不改变既有更新行为。 |
+| `dataTransition.durationMs` | `360` | 范围为 `1..10000`。兼容身份分别为 X/label、series/label、slice label、cell coordinate 和 dimension label；新增、删除、重排或非有限值立即切换。 |
 | `pie.innerRadiusRatio` | `0.58` | `0` 为饼图，`(0, 0.85]` 为环图。 |
 | `pie.startAngleDegrees` | `-90` | 默认从十二点方向开始，必须为有限值。 |
 | `pie.gapAngleDegrees` | `1.5` | 扇区间隙范围为 `[0, 10]`；单扇区自动取消间隙。 |
 | `heatmap.cellGap` | `3` | 必须大于等于 0；实际间距会被单元格尺寸限制，避免负尺寸。 |
 | `heatmap.colorScale` | 空列表 | 空值使用 GitHub 风格的绿色深浅离散色阶；`ChartTheme.dark()` 使用深色适配绿阶。有值时按归一化热度选择颜色桶。 |
 | `radar.gridCount` | `5` | 范围为 `[2, 10]`；所有系列共享同一从零开始的漂亮刻度域。 |
+| `radar.maxValue` | `null` | 可选的固定径向最大值，必须为有限正数；用于让实时更新和跨时段比较保持同一比例尺。 |
 | `radar.fillColors` | 空列表 | 默认只描边；如启用填充，应提供半透明 ARGB，避免遮挡重叠系列。 |
 | `SparklineChart.selectable` | `false` | 默认不处理点击；开启后回调 `ChartSelection<ChartPoint>`。 |
 | `theme` | `ChartTheme.light()` | 内置 Light、Dark、Ocean、Sunset；系列显式颜色优先。 |

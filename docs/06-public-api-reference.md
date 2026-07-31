@@ -1,6 +1,6 @@
 # 公共 API 参考
 
-> 本文档定义拟公开 API。代码完成后，每个公共符号必须拥有等价 KDoc，示例名称必须与实际代码一致。候选扩展不构成已发布承诺。
+> 本文档描述当前公共 API。每个公共符号均应有等价 KDoc，示例名称必须与实际代码一致；图片导出、Crosshair、Brush 和未完成三端验证的手势仍会明确标注为实验性或实现中。
 
 ## 图表入口
 
@@ -31,12 +31,17 @@
 | `HeatmapEntry` | `xLabel`、`yLabel`、`value`、`color?` | 热力图单元格；同一 `xLabel/yLabel` 坐标只能出现一次，非有限值跳过。 |
 | `RadarEntry` | `label`、`value` | 雷达维度值；每个非空系列必须使用同一顺序且唯一的维度标签，负值和非有限值作为断点。 |
 | `ChartSeries<T>` | `name`、`items`、`color?` | 一个系列及其稳定标识。 |
+| `PointDataScope` / `PointSeriesScope` | `series(name) { point(...) }` | Line、Area、Sparkline 的推荐嵌套数据 DSL；`point(label, value)` 自动分配 X。 |
+| `BarDataScope` / `BarSeriesScope` | `series(name) { item(...) }` | Bar 与 Mixed 的推荐分类数据 DSL。 |
+| `PieDataScope` | `slice(label, value, color?)` | Pie/Donut 的推荐扇区 DSL。 |
+| `HeatmapDataScope` | `cell(xLabel, yLabel, value, color?)` | Heatmap 的推荐单元格 DSL。 |
+| `RadarDataScope` / `RadarSeriesScope` | `series(name) { metric(...) }` | Radar 的推荐维度 DSL。 |
 | `ChartSelection<T>` | `seriesIndex`、`itemIndex`、`item` | 命中后回调的原始项与索引。 |
 | `ChartTracker<T>` | `x`、`selections` | 长按追踪结果；`x` 为数据坐标，选择项保留原始索引。 |
 | `ChartViewport` | `startIndex`、`endIndex` | 折线/面积窗口的闭区间，保留原始数据索引。 |
 | `MixedChartSelection` | `seriesType`、`seriesIndex`、`itemIndex`、`seriesName`、`item` | 组合图命中结果；系列索引分别在柱/线系列列表内计数。 |
-| `AxisLabelFormatter<T>` | `(item: T, index: Int) -> String` | 格式化分类标签。 |
-| `ValueFormatter` | `(value: Double) -> String` | 格式化轴、标签和 Tooltip。 |
+| `AxisOptions.labelFormatter` | `(value: Float) -> String` | 格式化数值坐标轴标签。 |
+| `TooltipOptions.valueFormatter` | `(value: Float) -> String` | 格式化 Tooltip 数值。 |
 
 | 配置块 | 关键属性 | 说明 |
 | --- | --- | --- |
@@ -46,18 +51,22 @@
 | `area {}` | `fillColors` | 面积填充色，按系列索引循环使用；建议使用含透明度的 ARGB。 |
 | `pie {}` | `innerRadiusRatio`、`startAngleDegrees`、`gapAngleDegrees`、`showValueLabels`、`centerLabel` | `innerRadiusRatio=0` 为饼图，大于零为环图。 |
 | `heatmap {}` | `cellGap`、`showValueLabels`、`colorScale` | 二维网格的单元格间距、可选值文本和离散颜色桶；空 `colorScale` 使用 GitHub 风格绿色深浅色阶。 |
-| `radar {}` | `gridCount`、`showPoints`、`showValueLabels`、`lineWidth`、`fillColors` | 雷达网格与系列样式；填充色应为半透明 ARGB，空列表不填充。 |
+| `radar {}` | `gridCount`、`maxValue`、`showPoints`、`showValueLabels`、`lineWidth`、`fillColors` | 雷达网格与系列样式；`maxValue` 可固定径向比例尺以便实时数据更新，填充色应为半透明 ARGB，空列表不填充。 |
 | `barData(...)` / `lineData(...)` | `ChartSeries<BarEntry>` | 组合图的柱/线系列；输入顺序共同定义分类槽。 |
+| `data { ... }` | 各图表对应的 `*DataScope` | 推荐的简洁数据入口；与 `data(ChartSeries(...))` 或 `data(Entry(...))` 等价，且保留后者兼容性。 |
 | `SparklineChart.selectable` | `false` | 显式开启后复用折线点击选择与 `LineChartEvent`；Tooltip 仍独立控制。 |
 | `bars {}` | `mode`、`barWidthRatio`、`showValueLabels` | 单组、分组或堆叠柱。 |
 | `legend {}` | `visible`、`position`、`toggleSeriesOnTap` | 图例和系列可见性。 |
 | `tooltip {}` | `enabled`、`trackerEnabled`、`keepTrackerOnRelease`、`formatter` | 点击提示；折线/面积长按追踪和释放策略。 |
+| `crosshair {}` | `enabled`、`showHorizontalGuide` | 折线/面积 tracker 的可选水平参考线；默认关闭。 |
+| `brush {}` | `enabled`、`zoomToSelectionOnRelease` | 折线/面积图的实验性长按框选；默认关闭，长按时优先于 tracker。 |
 | `interaction {}` | `enablePan`、`enableZoom`、`visibleItemCount`、`minVisibleItemCount`、`maxVisibleItemCount`、`viewport`、`maxRenderPointCount` | 折线/面积图的单指平移、双指缩放、受控可视窗口与每系列采样上限；采样保留峰谷、坏点分段和原始索引。 |
+| `dataTransition {}` | `enabled`、`durationMs` | 所有现有图表的兼容快照值更新动画，默认关闭。身份结构变化、新增/删除/重排以及非有限值均直接切换，避免跨语义插值。 |
 | `animation {}` | `enabled`、`durationMs`、`style` | 渐显或裁剪揭示，默认关闭。 |
 
 ## 回调与扩展优先级
 
-`onItemSelected` 接收 `ChartSelection<T>`。`HeatmapChart` 将选择回调到原始 `HeatmapEntry`，`RadarChart` 回调到原始 `RadarEntry`；二者的 `itemIndex` 均不因坏值过滤而重排。`LineChartEvent.onTrackerChanged` 接收 `ChartTracker<ChartPoint>?`；`null` 表示非持久追踪已释放或清除。`onViewportChanged` 在平移、缩放和双击复位后返回已钳制的 `ChartViewport`；面积图复用 `LineChartEvent`。平台原生对象、Canvas 引用和手势原始坐标不暴露给使用方。
+`onItemSelected` 接收 `ChartSelection<T>`。`HeatmapChart` 将选择回调到原始 `HeatmapEntry`，`RadarChart` 回调到原始 `RadarEntry`；二者的 `itemIndex` 均不因坏值过滤而重排。`LineChartEvent.onTrackerChanged` 接收 `ChartTracker<ChartPoint>?`；`null` 表示非持久追踪已释放或清除。`onBrushChanged` 接收 `ChartBrushSelection?`，`null` 表示双击或销毁时清除。`onViewportChanged` 在平移、缩放、Brush 缩放和双击复位后返回已钳制的 `ChartViewport`；面积图复用 `LineChartEvent`。平台原生对象、Canvas 引用和手势原始坐标不暴露给使用方。
 
 格式化与渲染优先级固定为：调用方 `slot/renderer` > 系列显式配置 > `ChartTheme` > 内置默认实现。公共 API 不依赖 `internal` 的 Renderer、布局矩形或 Canvas 命令；新增字段必须有保留旧行为的默认值。
 

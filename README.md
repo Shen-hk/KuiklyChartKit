@@ -18,7 +18,7 @@ KuiklyChartKit 是面向通用数据可视化场景的 Kuikly 跨端图表组件
 | `MixedChart` | P1 第三批已完成 | 分类柱与分类折线共享坐标、图例和 Tooltip；选择结果明确区分柱/线来源。 |
 | `SparklineChart` | P1 第四批已完成 | 单系列紧凑趋势；默认隐藏轴、网格、图例、数据点和 Tooltip，可选点击选择。 |
 | `BarChart` | P0 已完成 | 分类柱、并列多系列、正负值零基线、值标签、圆角、点击选择和基础 Tooltip。 |
-| Kuikly DSL | P0 已完成 | `ViewContainer` 扩展 + `ComposeView<Attr, Event>`；错误配置给出字段级异常。 |
+| Kuikly DSL | P0 已完成 | `ViewContainer` 扩展 + `ComposeView<Attr, Event>`；支持简洁的嵌套数据 DSL 和直接传入不可变模型两种写法，错误配置给出字段级异常。 |
 | Android Showcase | 已验证 | `chart_showcase` 页面已接入路由，Debug APK 构建通过。 |
 | H5 Showcase | 实验性验证 | 使用同一份 `commonMain` 页面完成浏览器验证；不替代正式平台支持矩阵。 |
 | 折线长按追踪 | P1 已验收 | 默认关闭；按最近 X 槽聚合同槽多系列，并保留原始数据索引。 |
@@ -26,8 +26,8 @@ KuiklyChartKit 是面向通用数据可视化场景的 Kuikly 跨端图表组件
 | 密集数据采样 | P1 已完成 | 折线、面积与 Sparkline 共用 min/max 桶采样；保留峰谷、坏点分段和原始索引，可配置每系列绘制上限。 |
 | 图片导出 | P2 实验性 | `exportImage` 默认返回一次性 `DATA_URI`，不保留缓存型图像；当前基线尚无三端真机验证，不能宣称跨端导出支持。 |
 | P3-1 手势视口 | 实现中 | `ChartGestureController` 作为纯 Kotlin 内核处理 pan、pinch focal 和双击复位；`commonTest` 覆盖钳制、焦点、复位、tracker release 和非有限值。仍缺 Android 真机、APK 与 iOS/OpenHarmony 证据。详见 [P3 路线](docs/15-p3-interaction-data-roadmap.md)。 |
-| P3-2 Crosshair / Brush | 候选，默认关闭 | 已明确为不抢占点击、追踪和平移的独立状态机；先完成 P3-1 三端验收，再交付可选十字准星、区间框选、缩放至选区和清除。详见 [P3 路线](docs/15-p3-interaction-data-roadmap.md)。 |
-| 数据更新动画 | 已实现，补强测试 | 兼容快照仅对 Y 值插值；删除/重排 series 或非有限值立即切换，极值插值以 `Double` 中间值避免溢出。 |
+| P3-2 Crosshair / Brush | 实验性实现中，默认关闭 | `crosshair {}` 复用 tracker 命中坐标增加水平参考线；`brush {}` 使用独立纯 Kotlin 状态机，限定绘图区长按、输出原始索引区间、可选释放缩放与双击清除。尚缺正式平台录屏与验收，详见 [P3 路线](docs/15-p3-interaction-data-roadmap.md)。 |
+| 数据更新动画 | 已实现，覆盖 8 类图表 | Line/Area/Sparkline 对稳定 X/label 的 Y 值插值；Bar/Mixed 对稳定 series/label 插值；Pie、Heatmap、Radar 分别以 slice label、cell coordinate、dimension label 保持身份。新增、删除、重排或非有限值直接切换，极值插值以 `Double` 中间值避免溢出。 |
 | 证据与限制 | 部分已验证 | Performance Lab 覆盖 100/1,000/5,000 点；自动化测试、Android 单测和 H5 发布构建有记录。正式三端视觉、手势和导出证据仍待补，详见 [验收记录](docs/12-p1-implementation-status.md) 与 [P2 状态](docs/13-p2-implementation-status.md)。 |
 
 ### 能力等级与证据
@@ -59,7 +59,67 @@ Android APK 位于：
 androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
-## DSL 示例
+## 推荐 DSL
+
+每个图表都提供两种等价的数据写法：推荐使用下面的嵌套 DSL，数据来自仓库、接口或状态层时也可以继续调用 `data(ChartSeries(...))` 传入已有的不可变模型。嵌套 DSL 会在提交给图表前复用同一套校验规则，因此空系列名、重复热力格或不一致的雷达维度都会立即报错。
+
+```kotlin
+LineChart {
+    attr {
+        data {
+            series("访问量", Color(0xFF2563EB)) {
+                point("周一", 120f) // 自动使用 0、1、2… 作为 X 坐标
+                point("周二", 168f)
+                point(x = 3f, value = 142f, label = "周三") // 需要时可指定数值 X
+            }
+        }
+        theme = ChartTheme.ocean()
+        yAxis { tickCount = 5; includeZero = false }
+        line { smooth = true; showPoints = true }
+        tooltip { enabled = true }
+    }
+    event { onItemSelected { selection -> onPointSelected(selection.item) } }
+}
+```
+
+```kotlin
+BarChart {
+    attr {
+        data {
+            series("转化") {
+                item("A", 86f)
+                item("B", 132f)
+                item("C", 109f)
+            }
+        }
+        bars { barWidthRatio = 0.68f; showValueLabels = true }
+    }
+}
+
+MixedChart {
+    attr {
+        barData { series("实际收入") { item("周一", 86f); item("周二", 112f) } }
+        lineData { series("目标收入") { item("周一", 96f); item("周二", 105f) } }
+    }
+}
+```
+
+```kotlin
+PieChart {
+    attr {
+        data {
+            slice("推荐", 420f)
+            slice("搜索", 260f)
+            slice("直播", 190f)
+        }
+        pie { innerRadiusRatio = 0.58f; centerLabel = "订单总量" }
+    }
+}
+```
+
+`AreaChart`、`SparklineChart` 复用折线的 `data { series { point(...) } }`；`HeatmapChart` 使用 `data { cell(xLabel, yLabel, value) }`；`RadarChart` 使用 `data { series { metric(label, value) } }`。完整示例和所有配置项见 [接入与示例](docs/07-integration-and-examples.md)、[DSL 规范](docs/03-dsl-specification.md) 与 [公共 API](docs/06-public-api-reference.md)。
+
+## 直接模型 DSL
 
 ```kotlin
 LineChart {

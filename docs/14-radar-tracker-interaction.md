@@ -17,7 +17,10 @@
 ```kotlin
 RadarChart {
     attr {
-        data(current, target)
+        data {
+            series("当前") { metric("响应", 86f); metric("解决", 72f); metric("满意度", 91f) }
+            series("目标") { metric("响应", 80f); metric("解决", 82f); metric("满意度", 88f) }
+        }
         radar {
             trackerEnabled = true
             fillColors = listOf(currentFill, targetFill)

@@ -19,7 +19,7 @@ iOS 使用 `iosApp/Podfile` 关联 `chartkit`，OpenHarmony 使用 `ohosApp` 工
 
 ## 贡献要求
 
-- 公共模型、DSL 与 Renderer 的改动必须附测试和文档。
+- 公共模型、DSL 与 Renderer 的改动必须附测试和文档；数据 DSL 改动还必须验证嵌套写法与直接模型写法保持同一校验和回调语义。
 - 不将平台原生类型泄漏到 `commonMain` 公共 API。
 - 绘制常量集中在 Theme/Style 模型，禁止 Renderer 魔法数字。
 - 一次 PR 聚焦一项能力；架构/DSL 改动说明兼容性与迁移路径。
@@ -29,7 +29,7 @@ iOS 使用 `iosApp/Podfile` 关联 `chartkit`，OpenHarmony 使用 `ohosApp` 工
 
 - [ ] 折线图、柱状图与官方风格 DSL 已实现。
 - [ ] 候选交互和扩展图表不影响 P0 的三端稳定性。
-- [ ] API KDoc、文档、示例与实际代码一致。
+- [x] README、DSL 规范、公共 API 和接入示例均说明简洁数据 DSL，并保留直接模型迁移路径。
 - [ ] 三端验收矩阵、测试、截图和录屏完整。
 - [ ] Showcase 覆盖核心、交互、扩展图表和大数据场景。
 - [ ] 在 Issue 中提交最终仓库地址与证据导航。

@@ -18,7 +18,7 @@
 - 主题有完整默认值，且支持集中替换；
 - 扩展点有清晰优先级（调用方 Slot/Formatter > 可替换工厂 > 内置默认实现）。
 
-ChartKit 将采用同一理念：`ValueFormatter`、`AxisFormatter`、`TooltipRenderer` 和 `SeriesRenderer` 可替换；显式配置优先于 `ChartTheme`，主题优先于内置默认值。
+ChartKit 采用同一理念：公开入口保持 `ViewContainer + ComposeView<Attr, Event>`，数据在 `attr` 内通过 `data { series { point/item/metric } }`、`slice`、`cell` 构建，或直接传入已有不可变模型；显式配置优先于 `ChartTheme`，主题优先于内置默认值。嵌套 DSL 不依赖平台类型，适合放在 `commonMain`。
 
 ## 公开竞争对标
 

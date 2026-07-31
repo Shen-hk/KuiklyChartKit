@@ -1,5 +1,7 @@
 # M0 实现与验收记录
 
+> 本文保留 M0 阶段快照。当前推荐数据写法、完整 API 和最新证据请以 [DSL 规范](03-dsl-specification.md)、[公共 API](06-public-api-reference.md)、[测试计划](08-test-plan.md) 为准。
+
 > 基线日期：2026-07-24  
 > 适用范围：P0 / M0 基础组件  
 > 结论：Line、Bar、Kuikly DSL、点击选择与基础 Tooltip、Android/H5 共用 Showcase、算法测试、Android Debug APK 和 H5 production 站点已落地。折线长按 Tracker 与水平平移已作为默认关闭的实验性 API 完成 Android/JS 编译与纯逻辑测试；正式平台手势验收、其他候选能力、完整证据包和任何业务接入均不属于 M0，也未宣称完成。

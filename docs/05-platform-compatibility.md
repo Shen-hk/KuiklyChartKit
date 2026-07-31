@@ -8,9 +8,9 @@
 
 | 平台 | 当前工程基线 | 发布承诺 | 必验能力 |
 | --- | --- | --- | --- |
-| Android | `minSdk 21`，`compileSdk 34` | 支持 | 渲染、点击、动态数据、长标签、候选手势。 |
-| iOS | deployment target `14.1` | 支持 | 渲染、点击、动态数据、长标签、候选手势。 |
-| OpenHarmony | 现有 `ohosApp` 宿主 | 支持 | 渲染、点击、动态数据、长标签、候选手势。 |
+| Android | `minSdk 21`，`compileSdk 34` | 工程可构建；视觉/手势证据待持续补齐 | 渲染、点击、动态数据、长标签、候选手势。 |
+| iOS | deployment target `14.1` | 宿主已配置；当前 Windows 环境不能验证 | 渲染、点击、动态数据、长标签、候选手势。 |
+| OpenHarmony | 现有 `ohosApp` 宿主 | 宿主已配置；真机证据待补齐 | 渲染、点击、动态数据、长标签、候选手势。 |
 | Web/JS | Kotlin JS(IR) 与 H5 Showcase | 实验性 | 仅记录构建和 Canvas 行为，不替代三端发布验收。 |
 
 ## 能力门槛
