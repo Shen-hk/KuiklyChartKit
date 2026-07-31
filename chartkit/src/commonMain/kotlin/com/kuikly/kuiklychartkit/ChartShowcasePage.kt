@@ -1936,15 +1936,15 @@ internal class ChartShowcasePage : BasePager() {
                 val trendSection = (trendSectionStart until categorySectionStart).map(::getChild)
                 val categorySection = (categorySectionStart until categorySectionEnd).map(::getChild)
                 listOf(
-                    performanceSection,
-                    heatmapSection,
-                    pieSection,
-                    areaSection,
-                    sparklineSection,
-                    radarSection,
-                    mixedSection,
-                    categorySection,
                     trendSection,
+                    categorySection,
+                    mixedSection,
+                    radarSection,
+                    sparklineSection,
+                    areaSection,
+                    pieSection,
+                    heatmapSection,
+                    performanceSection,
                 ).forEach { section ->
                     section.asReversed().forEach { child ->
                         move(templateChildren().indexOf(child), performanceSectionStart, 1)

@@ -43,7 +43,9 @@ LineChart {
 }
 ```
 
-推荐的数据构建器为：折线、面积与 Sparkline 使用 `data { series { point(...) } }`，柱状使用 `data { series { item(...) } }`，组合图分别使用 `barData { series { item(...) } }` 和 `lineData { ... }`，饼环使用 `data { slice(...) }`，热力使用 `data { cell(...) }`，雷达使用 `data { series { metric(...) } }`。`point(label, value)` 自动生成从零开始的 X 坐标；需要连续时间戳或数值比例时使用 `point(x, value, label)`。直接传入 `ChartSeries`、`ChartPoint` 和 Entry 对象的旧写法保持兼容，适合复用已有数据快照。
+推荐的数据构建器为：折线、面积与 Sparkline 使用 `data { series { point(...) } }`，柱状使用 `data { series { item(...) } }`，组合图分别使用 `barData { series { item(...) } }` 和 `lineData { ... }`，饼环使用 `data { slice(...) }`，热力使用 `data { cell(...) }`，雷达使用 `data { series { metric(...) } }`。`point(label, value)` 自动生成从零开始的 X 坐标；需要连续时间戳或数值比例时使用 `point(x, value, label)`。
+
+批量数据可继续留在嵌套 DSL 内声明：折线支持 `points(labels, values)`、`points(Iterable<ChartPoint>)` 和 `series(name, items)`；柱状和组合图支持 `items(labels, values)`、`items(Iterable<BarEntry>)` 和 `series(name, items)`；饼环支持 `slices(labels, values)` 与 `slices(Iterable<PieEntry>)`；热力支持 `cells(Iterable<HeatmapEntry>)`；雷达支持 `metrics(labels, values)`、`metrics(Iterable<RadarEntry>)` 和 `series(name, items)`。`labels` 与 `values` 的长度必须一致，避免静默截断。直接传入 `ChartSeries`、`ChartPoint` 和 Entry 对象的旧写法保持兼容，适合复用已有数据快照。
 
 `BarChart` 与 `AreaChart` 复用笛卡尔坐标、网格、Tooltip 与主题。`MixedChart` 的柱/线系列按输入索引共享分类槽和 Y 轴；`PieChart` 只复用主题、Tooltip、事件与格式化器，不伪造坐标轴 API。所有非空 `RadarChart` 系列必须共享至少三个、顺序一致且唯一的维度标签。
 

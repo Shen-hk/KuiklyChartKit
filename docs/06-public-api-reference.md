@@ -26,16 +26,16 @@
 | API | 字段/签名 | 说明 |
 | --- | --- | --- |
 | `ChartPoint` | `x`、`y`、`label?` | 折线或面积的数据项。 |
-| `BarEntry` | `value`、`label` | 分类柱数据项。 |
+| `BarEntry` | `label`、`value` | 分类柱数据项。 |
 | `PieEntry` | `label`、`value`、`color?` | 饼环扇区；仅有限且大于零的值参与布局。 |
 | `HeatmapEntry` | `xLabel`、`yLabel`、`value`、`color?` | 热力图单元格；同一 `xLabel/yLabel` 坐标只能出现一次，非有限值跳过。 |
 | `RadarEntry` | `label`、`value` | 雷达维度值；每个非空系列必须使用同一顺序且唯一的维度标签，负值和非有限值作为断点。 |
 | `ChartSeries<T>` | `name`、`items`、`color?` | 一个系列及其稳定标识。 |
-| `PointDataScope` / `PointSeriesScope` | `series(name) { point(...) }` | Line、Area、Sparkline 的推荐嵌套数据 DSL；`point(label, value)` 自动分配 X。 |
-| `BarDataScope` / `BarSeriesScope` | `series(name) { item(...) }` | Bar 与 Mixed 的推荐分类数据 DSL。 |
-| `PieDataScope` | `slice(label, value, color?)` | Pie/Donut 的推荐扇区 DSL。 |
-| `HeatmapDataScope` | `cell(xLabel, yLabel, value, color?)` | Heatmap 的推荐单元格 DSL。 |
-| `RadarDataScope` / `RadarSeriesScope` | `series(name) { metric(...) }` | Radar 的推荐维度 DSL。 |
+| `PointDataScope` / `PointSeriesScope` | `series(name) { point(...); points(...) }`、`series(name, items)` | Line、Area、Sparkline 的推荐嵌套数据 DSL；`point(label, value)` 自动分配 X，`points(labels, values)` 批量导入。 |
+| `BarDataScope` / `BarSeriesScope` | `series(name) { item(...); items(...) }`、`series(name, items)` | Bar 与 Mixed 的推荐分类数据 DSL；`items(labels, values)` 批量导入。 |
+| `PieDataScope` | `slice(label, value, color?)`、`slices(...)` | Pie/Donut 的推荐扇区 DSL；`slices(labels, values)` 批量导入。 |
+| `HeatmapDataScope` | `cell(xLabel, yLabel, value, color?)`、`cells(...)` | Heatmap 的推荐单元格 DSL，可批量接收既有 `HeatmapEntry` 快照。 |
+| `RadarDataScope` / `RadarSeriesScope` | `series(name) { metric(...); metrics(...) }`、`series(name, items)` | Radar 的推荐维度 DSL；`metrics(labels, values)` 批量导入。 |
 | `ChartSelection<T>` | `seriesIndex`、`itemIndex`、`item` | 命中后回调的原始项与索引。 |
 | `ChartTracker<T>` | `x`、`selections` | 长按追踪结果；`x` 为数据坐标，选择项保留原始索引。 |
 | `ChartViewport` | `startIndex`、`endIndex` | 折线/面积窗口的闭区间，保留原始数据索引。 |
