@@ -50,4 +50,79 @@ class ChartDataDslTest {
             BarChartAttr().data { series("") { item("A", 1f) } }
         }
     }
+
+    @Test
+    fun bulkDataDslBuildsSeriesAndEntries() {
+        val labels = listOf("Mon", "Tue", "Wed")
+        val values = listOf(120f, 168f, 142f)
+
+        val line = LineChartAttr()
+        line.data {
+            series("Visits") {
+                points(labels, values)
+            }
+            series(
+                name = "Orders",
+                items = listOf(ChartPoint(0f, 42f, "Mon"), ChartPoint(1f, 51f, "Tue")),
+            )
+        }
+        assertEquals(listOf(0f, 1f, 2f), line.series.first().items.map { it.x })
+        assertEquals("Orders", line.series[1].name)
+
+        val bar = BarChartAttr()
+        bar.data {
+            series("Revenue") {
+                items(labels, values)
+            }
+        }
+        assertEquals("Tue", bar.series.single().items[1].label)
+
+        val pie = PieChartAttr()
+        pie.data {
+            slices(labels, values)
+        }
+        assertEquals(3, pie.entries.size)
+
+        val heatmap = HeatmapChartAttr()
+        heatmap.data {
+            cells(
+                listOf(
+                    HeatmapEntry("Mon", "09:00", 42f),
+                    HeatmapEntry("Tue", "09:00", 58f),
+                ),
+            )
+        }
+        assertEquals("Tue", heatmap.entries[1].xLabel)
+
+        val radar = RadarChartAttr()
+        radar.data {
+            series("Current") {
+                metrics(listOf("Speed", "Quality", "Cost"), listOf(86f, 72f, 91f))
+            }
+            series(
+                name = "Target",
+                items = listOf(RadarEntry("Speed", 80f), RadarEntry("Quality", 82f), RadarEntry("Cost", 88f)),
+            )
+        }
+        assertEquals("Target", radar.series[1].name)
+    }
+
+    @Test
+    fun bulkDataDslRejectsMismatchedLabelsAndValues() {
+        assertFailsWith<IllegalArgumentException> {
+            LineChartAttr().data {
+                series("Visits") {
+                    points(labels = listOf("Mon"), values = listOf(120f, 168f))
+                }
+            }
+        }
+
+        assertFailsWith<IllegalArgumentException> {
+            BarChartAttr().data {
+                series("Revenue") {
+                    items(labels = listOf("Mon"), values = emptyList())
+                }
+            }
+        }
+    }
 }
