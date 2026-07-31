@@ -1,268 +1,457 @@
-# KuiklyChartKit
+# KuiklyChartView
 
-KuiklyChartKit 是面向通用数据可视化场景的 Kuikly 跨端图表组件库，对应 [KuiklyUI Issue #1477](https://github.com/Tencent-TDS/KuiklyUI/issues/1477)。总体目标是交付可复用、可扩展、可验证的图表基础能力，而不是面向某个行业或业务 Demo 的专用图表库。
+基于 KuiklyUI 与 Kotlin Multiplatform 实现的跨端 Canvas 图表组件。组件提供折线图、柱状图、面积图、饼图、环形图和混合图，并内置坐标轴、网格、图例、Tooltip、视窗手势与数据过渡动画；核心模型、DSL、绘制和交互均位于 `commonMain`，同一套 Kotlin API 可用于 Android、iOS、Web（Kotlin/JS）和 OpenHarmony。
 
-当前能力按“已验证 / 实现中 / 候选”分级展示，并把代码、测试和平台证据分开陈述。P0/P1 已覆盖折线、柱状、面积、饼环、组合与 Sparkline；P2 已提供热力、雷达和一次性图片导出封装。图片导出仍是实验 API，P3 手势也尚未取得 Android、iOS、OpenHarmony 的完整真机证据，因此不宣称三端正式可用。
+---
 
-> 当前基线：Kuikly `2.7.0` · Kotlin `2.1.21`
+## 演示 Demo
 
-## 当前完成度
+KuiklyChartView 演示 Demo
 
-| 能力 | 状态 | 说明 |
-| --- | --- | --- |
-| `LineChart` | P0 已完成 | 多系列、直线/平滑、点、轴、网格、图例、空态、点击选择和基础 Tooltip。 |
-| `AreaChart` | P1 首批已完成 | 复用折线坐标、点击、长按追踪和平移协议；支持平滑边界、零基线和分系列半透明填充。 |
-| `PieChart` | P1 第二批已完成 | 独立极坐标布局；支持饼/环切换、扇区间隙、百分比标签、中心汇总和点击选择。 |
-| `HeatmapChart` | P2 首批已完成 | 二维分类网格、按值离散颜色桶、长标签截断、点击单元格和原始索引回调。 |
-| `RadarChart` | P2 首批已完成 | 多系列共享维度极坐标网格；支持可选半透明填充、顶点点击和非法值断点。 |
-| `MixedChart` | P1 第三批已完成 | 分类柱与分类折线共享坐标、图例和 Tooltip；选择结果明确区分柱/线来源。 |
-| `SparklineChart` | P1 第四批已完成 | 单系列紧凑趋势；默认隐藏轴、网格、图例、数据点和 Tooltip，可选点击选择。 |
-| `BarChart` | P0 已完成 | 分类柱、并列多系列、正负值零基线、值标签、圆角、点击选择和基础 Tooltip。 |
-| Kuikly DSL | P0 已完成 | `ViewContainer` 扩展 + `ComposeView<Attr, Event>`；支持简洁的嵌套数据 DSL 和直接传入不可变模型两种写法，错误配置给出字段级异常。 |
-| Android Showcase | 已验证 | `chart_showcase` 页面已接入路由，Debug APK 构建通过。 |
-| H5 Showcase | 实验性验证 | 使用同一份 `commonMain` 页面完成浏览器验证；不替代正式平台支持矩阵。 |
-| 折线长按追踪 | P1 已验收 | 默认关闭；按最近 X 槽聚合同槽多系列，并保留原始数据索引。 |
-| 折线水平平移 | P1 已验收 | 默认关闭；可配置可视点窗口，范围变化返回钳制后的原始索引。 |
-| 密集数据采样 | P1 已完成 | 折线、面积与 Sparkline 共用 min/max 桶采样；保留峰谷、坏点分段和原始索引，可配置每系列绘制上限。 |
-| 图片导出 | P2 实验性 | `exportImage` 默认返回一次性 `DATA_URI`，不保留缓存型图像；当前基线尚无三端真机验证，不能宣称跨端导出支持。 |
-| P3-1 手势视口 | 实现中 | `ChartGestureController` 作为纯 Kotlin 内核处理 pan、pinch focal 和双击复位；`commonTest` 覆盖钳制、焦点、复位、tracker release 和非有限值。仍缺 Android 真机、APK 与 iOS/OpenHarmony 证据。详见 [P3 路线](docs/15-p3-interaction-data-roadmap.md)。 |
-| P3-2 Crosshair / Brush | 实验性实现中，默认关闭 | `crosshair {}` 复用 tracker 命中坐标增加水平参考线；`brush {}` 使用独立纯 Kotlin 状态机，限定绘图区长按、输出原始索引区间、可选释放缩放与双击清除。尚缺正式平台录屏与验收，详见 [P3 路线](docs/15-p3-interaction-data-roadmap.md)。 |
-| 数据更新动画 | 已实现，覆盖 8 类图表 | Line/Area/Sparkline 对稳定 X/label 的 Y 值插值；Bar/Mixed 对稳定 series/label 插值；Pie、Heatmap、Radar 分别以 slice label、cell coordinate、dimension label 保持身份。新增、删除、重排或非有限值直接切换，极值插值以 `Double` 中间值避免溢出。 |
-| 证据与限制 | 部分已验证 | Performance Lab 覆盖 100/1,000/5,000 点；自动化测试、Android 单测和 H5 发布构建有记录。正式三端视觉、手势和导出证据仍待补，详见 [验收记录](docs/12-p1-implementation-status.md) 与 [P2 状态](docs/13-p2-implementation-status.md)。 |
+[![演示视频](docs/demo-poster.png)](docs/demo.mp4)
 
-### 能力等级与证据
+> 点击演示图可查看完整演示视频。
 
-- **已验证**：至少有公共 DSL、示例、自动化测试和对应构建记录；不等同于所有正式平台均已验收。
-- **实现中**：代码与 commonTest 已进入仓库，但关键平台证据或 API 稳定性尚未收口。
-- **候选**：已有规格与验收条件，尚未作为可承诺功能发布。
+演示页面名为 `chart_demo`，完整源码见 [ChartShowcasePage.kt](chartkit/src/commonMain/kotlin/com/kuikly/kuiklychartkit/ChartShowcasePage.kt)。Demo 覆盖五类图表、动态数据动画、选中回调、横向平移、双指缩放、程序化视窗控制以及运行时柱状图配色。
 
-证据索引见 [M0 实现与验收记录](docs/11-m0-implementation-status.md)、[P1 实现与验收记录](docs/12-p1-implementation-status.md)、[P2 实现与验收记录](docs/13-p2-implementation-status.md)、[P3 路线](docs/15-p3-interaction-data-roadmap.md) 和 [测试计划](docs/08-test-plan.md)。
+---
 
-## 构建
+## 能力矩阵
 
-在 Windows PowerShell 的仓库根目录执行：
+| 能力 | 本仓库实现 |
+| --- | --- |
+| 折线图 | 多系列、直线 / 平滑曲线、数据点、断点和数值标签 |
+| 柱状图 | 分组柱、正负值、零基线、圆角、逐系列或逐柱颜色 |
+| 面积图 | 直线 / 平滑边界、透明度和跨端线性渐变填充 |
+| 饼图与环形图 | 扇区颜色、间距、选中偏移、内半径和多种标签模式 |
+| 混合图 | 在同一坐标系中组合折线、柱和面积系列 |
+| 坐标系统 | X / Y 轴、自动范围、nice-number 刻度、格式化与横纵网格 |
+| 图例与提示 | 自动换行图例、Tooltip、十字线和结构化选中结果 |
+| 数据动画 | 折线、柱、面积、饼和环形图运行时平滑插值 |
+| 手势交互 | 点击选中、横向平移、双指缩放、双击重置且不阻塞页面纵向滚动 |
+| 命令式控制 | 视窗设置、缩放、平移、选择、清除和动态更新 |
+| 多平台支持 | Android、iOS、Web 与 OpenHarmony 共用组件和 Demo 代码 |
 
-```powershell
-# 自动化测试
-.\gradlew :chartkit:testDebugUnitTest
+---
 
-# Android Debug APK
-.\gradlew :androidApp:assembleDebug
+## 功能概览
 
-# 实验性 H5 Showcase
-.\gradlew :h5App:publishChartShowcase
-```
+- `Chart`、`LineChart`、`BarChart`、`AreaChart`、`PieChart` 类型安全入口
+- 多系列数据、分类标签、折线断点和自动颜色调色板
+- 标题、副标题、图例、坐标轴、网格、空数据状态和主题 token
+- Tooltip、十字线、点 / 柱 / 扇区命中和类型化事件回调
+- 小数索引视窗、横向连续平移、双指焦点缩放和双击重置
+- `update {}` 数据过渡动画与连续更新衔接
+- `ViewRef<ChartView>` 命令式运行时控制
+- 不依赖平台原生图表 View 的纯 Kuikly Canvas 实现
 
-Android APK 位于：
+---
+
+## 工程结构
 
 ```text
-androidApp/build/outputs/apk/debug/androidApp-debug.apk
+chartkit/
+└── src/
+    ├── commonMain/kotlin/.../
+    │   ├── chart/
+    │   │   ├── ChartComponents.kt       组件入口、状态、事件与手势
+    │   │   ├── ChartModels.kt           数据模型、DSL 与样式配置
+    │   │   ├── ChartDataDsl.kt          嵌套数据构建器
+    │   │   ├── ChartLayout.kt           纯 Kotlin 标尺、布局与采样
+    │   │   ├── render/                  不可变 ResolvedChartSpec 与 RenderPlan
+    │   │   └── interaction/             几何、刻度、命中、动画与 Canvas 渲染
+    │   └── ChartShowcasePage.kt         完整演示页面
+    └── commonTest/kotlin/.../           DSL、视窗、刻度、命中与动画测试
+
+androidApp/                              Android 宿主
+iosApp/                                  iOS 宿主
+ohosApp/                                 OpenHarmony 宿主
+docs/                                    API、架构文档与演示资源
 ```
 
-## 推荐 DSL
+---
 
-每个图表都提供两种等价的数据写法：推荐使用下面的嵌套 DSL，数据来自仓库、接口或状态层时也可以继续调用 `data(ChartSeries(...))` 传入已有的不可变模型。嵌套 DSL 会在提交给图表前复用同一套校验规则，因此空系列名、重复热力格或不一致的雷达维度都会立即报错。
+## 平台支持
+
+| 平台 | 仓库支持 | 验证入口 |
+| --- | --- | --- |
+| Android | `androidApp` 宿主与 Android target | `./gradlew :androidApp:assembleDebug` |
+| iOS | `iosApp` 宿主与 x64 / arm64 / Simulator targets | `./gradlew :chartkit:compileKotlinIosSimulatorArm64` |
+| Web | Kotlin/JS browser target | `./gradlew :chartkit:compileKotlinJs` |
+| OpenHarmony | `ohosApp` 宿主与 ohos-arm64 target | `./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64` |
+
+当前工程使用 Kuikly 2.7.0。Web Canvas 的部分文本属性在该版本未实现，组件通过 `measureText` 与手工坐标完成文本布局；Web 触摸事件不提供完整双指信息，因此 Demo 使用 `zoomIn()` / `zoomOut()` 按钮作为缩放降级方案。
+
+---
+
+## 环境与构建
+
+建议使用 JDK 17 或更高版本及 Android Studio。iOS 构建需要 macOS 与 Xcode；OpenHarmony 构建和运行需要 DevEco Studio 及对应 SDK。
+
+```bash
+# 图表模块单元测试
+./gradlew :chartkit:testDebugUnitTest
+
+# Android Debug APK
+./gradlew :androidApp:assembleDebug
+
+# Web / Kotlin JS
+./gradlew :chartkit:compileKotlinJs
+
+# iOS Simulator
+./gradlew :chartkit:compileKotlinIosSimulatorArm64
+
+# OpenHarmony / ohos-arm64
+./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64
+```
+
+Android Studio 直接打开仓库并运行 `androidApp` 即可进入 `chart_demo`。iOS 使用 Xcode 打开 `iosApp/iosApp.xcworkspace`。OpenHarmony 使用 DevEco Studio 打开 `ohosApp`。
+
+---
+
+## 接入方式
+
+仓库内 KMP 模块可直接依赖 `chartkit`：
 
 ```kotlin
-LineChart {
-    attr {
-        data {
-            series("访问量", Color(0xFF2563EB)) {
-                point("周一", 120f) // 自动使用 0、1、2… 作为 X 坐标
-                point("周二", 168f)
-                point(x = 3f, value = 142f, label = "周三") // 需要时可指定数值 X
+kotlin {
+    sourceSets {
+        val commonMain by getting {
+            dependencies {
+                implementation(project(":chartkit"))
             }
         }
-        theme = ChartTheme.ocean()
-        yAxis { tickCount = 5; includeZero = false }
-        line { smooth = true; showPoints = true }
-        tooltip { enabled = true }
     }
-    event { onItemSelected { selection -> onPointSelected(selection.item) } }
 }
 ```
+
+发布到本机 Maven：
+
+```bash
+./gradlew :chartkit:publishToMavenLocal
+```
+
+随后可按当前工程坐标接入：
+
+```kotlin
+dependencies {
+    implementation("com.guet.liang.kuiklychartview:chartkit:1.0.0")
+}
+```
+
+组件公共层依赖 Kuikly Core，具体版本以 `KotlinBuildVar.kt` 为准。
+
+---
+
+## API 速览
+
+| API | 用途 |
+| --- | --- |
+| `Chart { ... }` | 添加可混合折线、面积和柱系列的图表 |
+| `LineChart { ... }` | 添加默认折线系列的图表 |
+| `BarChart { ... }` | 添加默认柱系列的图表 |
+| `AreaChart { ... }` | 添加默认面积系列的图表 |
+| `PieChart { ... }` | 添加饼图或环形图 |
+| `chart { ... }` | 首次配置数据、样式、动画和交互 |
+| `update(animated) { ... }` | 运行时更新图表数据与配置 |
+| `ChartEvent` | 监听选中变化、数据点选中和视窗变化 |
+| `ChartView` | 读取状态并通过命令式方法控制图表 |
+| `ChartTheme` | 设置颜色、字号、内边距和提示框主题 |
+
+完整属性与默认值见 [API 文档](docs/06-public-api-reference.md)，渲染流程和跨端实现见 [架构文档](docs/02-architecture.md)。
+
+---
+
+## 基本用法
+
+```kotlin
+import com.kuikly.kuiklychartkit.chart.LineChart
+import com.tencent.kuikly.core.base.Color
+
+LineChart {
+    attr {
+        height(280f)
+    }
+    chart {
+        title = "周活跃用户"
+        subtitle = "单位：千人"
+        labels("周一", "周二", "周三", "周四", "周五")
+        series("DAU", 12f, 18f, 16f, 25f, 28f) {
+            color(Color(0xFF2563EB))
+            smooth()
+            points(radius = 3f)
+        }
+        axes {
+            y {
+                includeZero = true
+                formatter = { value -> "${value.toInt()}k" }
+            }
+        }
+        grid {
+            horizontal = true
+            dashed(4f, 4f)
+        }
+        interaction {
+            selectionEnabled = true
+            panEnabled = true
+            zoomEnabled = true
+        }
+    }
+    event {
+        pointSelected { selection ->
+            println("${selection.label}: ${selection.value}")
+        }
+    }
+}
+```
+
+---
+
+## 图表 DSL
+
+便捷组件中的 `series(...)` 会自动使用对应系列类型：
+
+```kotlin
+LineChart { chart { series("趋势", 1f, 3f, 2f) } }
+BarChart  { chart { series("销量", 8f, 12f, 10f) } }
+AreaChart { chart { series("流量", 3f, 6f, 5f) } }
+PieChart  { chart { labels("A", "B"); series("占比", 70f, 30f) } }
+```
+
+---
+
+### 混合图
+
+```kotlin
+Chart {
+    chart {
+        labels("Q1", "Q2", "Q3", "Q4")
+        bars("订单", 42f, 58f, 63f, 79f) {
+            valueLabels()
+        }
+        area("目标", 48f, 55f, 68f, 82f) {
+            smooth()
+        }
+        line("转化率", 31f, 38f, 45f, 52f) {
+            smooth()
+        }
+    }
+}
+```
+
+---
+
+### 柱状图
 
 ```kotlin
 BarChart {
-    attr {
-        data {
-            series("转化") {
-                item("A", 86f)
-                item("B", 132f)
-                item("C", 109f)
-            }
+    chart {
+        labels("自然", "广告", "推荐")
+        series("新增", 82f, 64f, 91f) {
+            barColors(
+                Color(0xFF2563EB),
+                Color(0xFF7C3AED),
+                Color(0xFF10B981),
+            )
+            valueLabels()
         }
-        bars { barWidthRatio = 0.68f; showValueLabels = true }
-    }
-}
-
-MixedChart {
-    attr {
-        barData { series("实际收入") { item("周一", 86f); item("周二", 112f) } }
-        lineData { series("目标收入") { item("周一", 96f); item("周二", 105f) } }
     }
 }
 ```
+
+---
+
+### 饼图与环形图
 
 ```kotlin
 PieChart {
-    attr {
-        data {
-            slice("推荐", 420f)
-            slice("搜索", 260f)
-            slice("直播", 190f)
-        }
-        pie { innerRadiusRatio = 0.58f; centerLabel = "订单总量" }
-    }
-}
-```
-
-`AreaChart`、`SparklineChart` 复用折线的 `data { series { point(...) } }`；`HeatmapChart` 使用 `data { cell(xLabel, yLabel, value) }`；`RadarChart` 使用 `data { series { metric(label, value) } }`。完整示例和所有配置项见 [接入与示例](docs/07-integration-and-examples.md)、[DSL 规范](docs/03-dsl-specification.md) 与 [公共 API](docs/06-public-api-reference.md)。
-
-## 直接模型 DSL
-
-```kotlin
-LineChart {
-    attr {
-        data(
-            ChartSeries(
-                name = "访问量",
-                items = listOf(
-                    ChartPoint(1f, 120f, "周一"),
-                    ChartPoint(2f, 168f, "周二"),
-                    ChartPoint(3f, 142f, "周三"),
-                ),
-            ),
-        )
-        theme = ChartTheme.ocean()
-        yAxis { tickCount = 5; includeZero = false }
-        line { smooth = true; showPoints = true }
-        tooltip { enabled = true }
-    }
-    event { onItemSelected { selection -> onPointSelected(selection.item) } }
-}
-```
-
-```kotlin
-BarChart {
-    attr {
-        data(
-            ChartSeries(
-                name = "转化",
-                items = listOf(
-                    BarEntry("A", 86f),
-                    BarEntry("B", 132f),
-                    BarEntry("C", 109f),
-                ),
-            ),
-        )
-        bars { barWidthRatio = 0.68f; showValueLabels = true }
-    }
-    event { onItemSelected { selection -> onBarSelected(selection.item) } }
-}
-```
-
-```kotlin
-AreaChart {
-    attr {
-        data(
-            ChartSeries(
-                name = "成交金额",
-                items = listOf(
-                    ChartPoint(1f, 82f, "周一"),
-                    ChartPoint(2f, 108f, "周二"),
-                    ChartPoint(3f, 142f, "周三"),
-                ),
-            ),
-        )
-        line { smooth = true; showPoints = false }
-        area { fillColors = listOf(Color(0x332563EB)) }
-        tooltip { trackerEnabled = true }
-    }
-    event { onItemSelected { selection -> onPointSelected(selection.item) } }
-}
-```
-
-```kotlin
-PieChart {
-    attr {
-        seriesName = "渠道订单"
-        data(
-            PieEntry("推荐", 420f),
-            PieEntry("搜索", 260f),
-            PieEntry("直播", 190f),
-            PieEntry("其他", 130f),
+    chart {
+        pie(
+            "订单",
+            PieEntry("App", 42f, Color(0xFF2563EB)),
+            PieEntry("Web", 31f, Color(0xFF10B981)),
+            PieEntry("门店", 27f, Color(0xFFF59E0BL)),
         )
         pie {
-            innerRadiusRatio = 0.58f
-            gapAngleDegrees = 2f
-            centerLabel = "订单总量"
+            innerRadiusRatio = 0.5f
+            labelMode = PieLabelMode.PERCENT
         }
     }
-    event { onItemSelected { selection -> onSliceSelected(selection.item) } }
 }
 ```
+
+---
+
+## 动态数据与过渡动画
+
+`chart {}` 用于首次配置。组件挂载后可通过 `ViewRef` 调用 `update {}`，默认从当前显示值平滑插值到目标值；连续更新会从屏幕上的当前值继续，不会跳回旧数据。
 
 ```kotlin
-MixedChart {
-    attr {
-        barData(ChartSeries("实际收入", actualRevenue))
-        lineData(ChartSeries("目标收入", targetRevenue))
-        bars { showValueLabels = false }
-        line { smooth = true; showPoints = true }
-        tooltip { valueFormatter = { value -> "¥${value.toInt()}K" } }
+private var chartRef: ViewRef<ChartView>? = null
+
+LineChart {
+    ref { chartRef = it }
+    chart {
+        labels("Q1", "Q2", "Q3", "Q4")
+        line("订单", 42f, 58f, 63f, 79f)
+        animation {
+            enabled = true
+            durationMillis = 650
+            easing = ChartAnimationEasing.EASE_IN_OUT
+        }
     }
-    event { onItemSelected { selection -> onMixedSelected(selection) } }
+}
+
+// 平滑过渡到新数据
+chartRef?.view?.update {
+    series[0].values(55f, 49f, 76f, 92f)
+}
+
+// 无动画替换全部系列
+chartRef?.view?.update(animated = false) {
+    clearSeries()
+    line("订单", 31f, 62f, 70f, 88f)
 }
 ```
+
+---
+
+## 手势与视窗
+
+- 点击数据点、柱或饼图扇区可展示 Tooltip，并触发结构化选中事件
+- `panEnabled = true` 时，单指横向拖动会连续更新小数索引视窗
+- 图表位于纵向 Scroller 中时，图表仅处理横向拖动，不阻塞页面上下滑动
+- `zoomEnabled = true` 时，Android、iOS 和 OpenHarmony 支持双指焦点缩放
+- 双击默认恢复完整数据范围，也可通过配置关闭
+- Web 使用命令式缩放按钮降级，其他视窗 API 保持一致
 
 ```kotlin
-SparklineChart {
-    attr {
-        data(ChartSeries("支付成功率", successRatePoints))
-        selectable = true
-        tooltip { enabled = true; valueFormatter = { value -> "$value%" } }
-    }
-    event { onItemSelected { selection -> onRateSelected(selection.item) } }
+private var chartRef: ViewRef<ChartView>? = null
+
+LineChart {
+    ref { chartRef = it }
 }
+
+chartRef?.view?.setViewport(2f, 8f)
+chartRef?.view?.zoomIn()
+chartRef?.view?.zoomOut()
+chartRef?.view?.panBy(2f)
+chartRef?.view?.resetViewport()
 ```
+
+---
+
+## 事件 API
 
 ```kotlin
-HeatmapChart {
-    attr {
-        seriesName = "客服咨询"
-        data(
-            HeatmapEntry("周一", "09:00", 42f),
-            HeatmapEntry("周一", "12:00", 81f),
-            HeatmapEntry("周二", "09:00", 58f),
-            HeatmapEntry("周二", "12:00", 94f),
-        )
-        heatmap { cellGap = 4f }
+event {
+    selectionChanged { selectionOrNull ->
+        println(selectionOrNull)
     }
-    event { onItemSelected { selection -> onCellSelected(selection.item) } }
+    pointSelected { selection ->
+        println("${selection.seriesName} · ${selection.label}: ${selection.value}")
+    }
+    viewportChanged { viewport ->
+        println("${viewport.startIndex} - ${viewport.endIndex}")
+    }
 }
 ```
+
+| 事件 | 说明 |
+| --- | --- |
+| `selectionChanged` | 选中数据或清除选中时触发，参数可为空 |
+| `pointSelected` | 成功选中点、柱或扇区后触发 |
+| `viewportChanged` | 手势或命令式 API 改变可见范围后触发 |
+
+`ChartSelection` 包含 `seriesIndex`、`dataIndex`、`seriesName`、`label`、`value` 和 `type`。`ChartViewport` 包含 `startIndex`、`endIndex` 与 `visiblePointCount`。
+
+---
+
+## 命令式 API
+
+| 方法 / 属性 | 说明 |
+| --- | --- |
+| `currentSelection` | 当前选中数据，无选中时为 `null` |
+| `currentViewport` | 当前可见分类索引范围 |
+| `update(animated = true) {}` | 动态更新数据和配置 |
+| `setViewport(startIndex, endIndex)` | 设置支持小数的可见范围 |
+| `resetViewport()` | 恢复完整范围并清除选中 |
+| `zoomIn(factor = 1.5f)` | 以视窗中心放大 |
+| `zoomOut(factor = 1.5f)` | 以视窗中心缩小 |
+| `panBy(categoryCount)` | 按分类数量平移 |
+| `select(seriesIndex, dataIndex)` | 程序化选择数据 |
+| `clearSelection()` | 清除 Tooltip、十字线和扇区选择 |
+
+---
+
+## 主题与样式
+
+`ChartTheme` 提供背景、文字、坐标轴、网格、十字线、Tooltip、选中色、字号和内容内边距等 token。各系列还可独立设置颜色、线宽、曲线、数据点、填充透明度和数值标签。
 
 ```kotlin
-RadarChart {
-    attr {
-        data(
-            ChartSeries("当前", listOf(
-                RadarEntry("响应", 86f), RadarEntry("解决", 72f), RadarEntry("满意度", 91f),
-            )),
-            ChartSeries("目标", listOf(
-                RadarEntry("响应", 80f), RadarEntry("解决", 82f), RadarEntry("满意度", 88f),
-            )),
-        )
-        radar { gridCount = 5; fillColors = listOf(Color(0x332563EB), Color(0x330D9488)) }
+chart {
+    theme {
+        backgroundColor = Color.WHITE
+        textColor = Color(0xFF0F172AL)
+        mutedTextColor = Color(0xFF64748BL)
+        gridColor = Color(0xFFE2E8F0L)
+        contentPadding(16f)
     }
-    event { onItemSelected { selection -> onMetricSelected(selection.item) } }
 }
 ```
 
-## 项目约束
+坐标轴、图例、Tooltip、柱状图和饼图的完整样式字段与默认值见 [API 文档](docs/06-public-api-reference.md)。
 
-- 公共 API 使用 `commonMain` Kotlin 模型，不能暴露平台原生类型。
-- 相同输入应保持一致的数据域、刻度、命中和回调语义；平台字体与抗锯齿差异可接受。
-- 任何未来扩展都必须同步公共 API/KDoc、示例、自动化测试和平台验证证据。
-- 图片导出仅可通过标注为实验性的 `exportImage` 调用；在三端升级、回归和内存验证完成前，不得将其标记为正式跨端能力。
+---
+
+## Demo 覆盖场景
+
+[ChartShowcasePage.kt](chartkit/src/commonMain/kotlin/com/kuikly/kuiklychartkit/ChartShowcasePage.kt) 展示：
+
+- 五类图表统一切换数据源与过渡动画
+- 双系列趋势折线、Tooltip、十字线、平移和缩放
+- 分组柱、正负值、逐柱颜色与运行时配色切换
+- 平滑渐变面积图和折线 / 柱 / 面积混合图
+- 饼图、环形图、百分比标签、图例和扇区选中
+- `selectionChanged`、`pointSelected` 与 `viewportChanged` 回调
+- Android、iOS、Web 与 OpenHarmony 共用页面实现
+
+---
+
+## 测试与验证
+
+`commonTest` 当前包含 **44 个测试**，覆盖：
+
+- DSL 数据构建、配置更新与只读数据视图
+- 视窗初始化、归一化、平移和焦点缩放
+- 自动范围、nice-number 刻度与颜色解析
+- 折线点、柱和饼图扇区命中
+- 数据插值、系列增删、断点、连续更新与 easing
+
+```bash
+./gradlew :chartkit:testDebugUnitTest
+./gradlew :chartkit:compileTestKotlinJs
+./gradlew :chartkit:compileKotlinJs
+./gradlew :chartkit:compileKotlinIosSimulatorArm64
+./gradlew :androidApp:assembleDebug
+```
+
+---
+
+## 当前边界
+
+- 图表模块尚未发布到公共 Maven 仓库，外部项目需源码接入或自行发布制品
+- Web 端当前使用按钮完成缩放，不支持与移动端相同的原生双指缩放
+- 自动化测试主要覆盖纯 Kotlin 数据、几何和动画逻辑；视觉与手势仍需结合各平台 Demo 验证
+- 图例会根据可用宽度自动换行，但极长标签仍建议由业务侧格式化或缩短
+
+---
+
+## 相关资料
+
+- [Kuikly ComposeView 开发文档](https://kuikly.tencent.com/)
+- [Kuikly Canvas API](https://kuikly.tencent.com/)
+- [Kuikly 基础事件](https://kuikly.tencent.com/)
+- [Kuikly 多模块](https://kuikly.tencent.com/)
+- [KuiklyUI 主仓库](https://github.com/Tencent/KuiklyUI)
+- [KuiklyChatUI 工程范例](https://github.com/Tencent/KuiklyChatUI)
