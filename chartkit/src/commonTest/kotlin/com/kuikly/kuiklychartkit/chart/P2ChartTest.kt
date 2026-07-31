@@ -259,6 +259,24 @@ class RadarLayoutEngineTest {
     }
 
     @Test
+    fun explicitRadarMaximumKeepsUpdatesOnOneStableScale() {
+        val layout = RadarLayoutEngine.layout(
+            width = 240f,
+            height = 220f,
+            series = listOf(
+                ChartSeries("current", listOf(RadarEntry("A", 40f), RadarEntry("B", 70f), RadarEntry("C", 80f))),
+            ),
+            gridCount = 4,
+            labelInset = 28f,
+            legendVisible = false,
+            maxValue = 100f,
+        )
+
+        assertEquals(0f, layout.scale.min)
+        assertEquals(100f, layout.scale.max)
+    }
+
+    @Test
     fun trackerProjectsOntoOneAxisAndOnlyReplacesThatPolygonVertex() {
         val layout = RadarLayoutEngine.layout(
             width = 240f,

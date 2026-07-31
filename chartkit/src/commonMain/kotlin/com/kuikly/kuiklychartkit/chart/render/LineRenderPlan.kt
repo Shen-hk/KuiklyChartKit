@@ -42,11 +42,16 @@ internal object LineRenderPlanFactory {
     ): LineRenderPlan? {
         if (width <= 0f || height <= 0f || viewport == null) return null
 
-        val visibleItems = spec.series.map { series ->
+        val layoutItems = spec.series.map { series ->
             series.items.withIndex().filter { it.index in viewport.startIndex..viewport.endIndex }
         }
+        val renderStartIndex = (viewport.startIndex - 1).coerceAtLeast(0)
+        val renderEndIndex = viewport.endIndex + 1
+        val renderedItems = spec.series.map { series ->
+            series.items.withIndex().filter { it.index in renderStartIndex..renderEndIndex }
+        }
         val visibleSeries = spec.series.mapIndexed { index, series ->
-            series.copy(items = visibleItems[index].map { it.value })
+            series.copy(items = layoutItems[index].map { it.value })
         }
         val visibleScaleSeries = spec.scaleSeries.map { series ->
             series.copy(items = series.items.withIndex().filter {
@@ -91,7 +96,7 @@ internal object LineRenderPlanFactory {
         val plannedSeries = spec.series.mapIndexed { seriesIndex, series ->
             val rawSegments = mutableListOf<MutableList<IndexedValue<ChartPoint>>>()
             var segment = mutableListOf<IndexedValue<ChartPoint>>()
-            visibleItems[seriesIndex].forEach { indexed ->
+            renderedItems[seriesIndex].forEach { indexed ->
                 val point = indexed.value
                 if (!point.x.isFinite() || !point.y.isFinite()) {
                     if (segment.isNotEmpty()) rawSegments += segment

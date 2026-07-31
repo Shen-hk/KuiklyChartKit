@@ -13,6 +13,7 @@ import com.tencent.kuikly.core.views.TextAlign
 import com.kuikly.kuiklychartkit.chart.interaction.ChartSelectionState
 import com.kuikly.kuiklychartkit.chart.interaction.PolarChartHitTest
 import com.kuikly.kuiklychartkit.chart.interaction.ChartFrameAnimation
+import com.kuikly.kuiklychartkit.chart.interaction.ChartSnapshotTransition
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -39,6 +40,9 @@ class HeatmapChartAttr : ComposeAttr() {
     /** Mutable options configured by [heatmap]. */
     val heatmapOptions = HeatmapOptions()
 
+    /** Mutable options configured by [dataTransition]. Disabled by default. */
+    val dataTransitionOptions = DataTransitionOptions()
+
     /** Replaces the immutable heatmap cell snapshot. */
     fun data(vararg value: HeatmapEntry) {
         value.forEach {
@@ -52,6 +56,11 @@ class HeatmapChartAttr : ComposeAttr() {
         entries = value.toList()
     }
 
+    /** Replaces cells using `data { cell("Mon", "09:00", 42f) }`. */
+    fun data(block: HeatmapDataScope.() -> Unit) {
+        data(*HeatmapDataScope().apply(block).build().toTypedArray())
+    }
+
     /** Configures click selection feedback and value formatting. */
     fun tooltip(block: TooltipOptions.() -> Unit) = tooltipOptions.apply(block)
 
@@ -60,6 +69,9 @@ class HeatmapChartAttr : ComposeAttr() {
         heatmapOptions.apply(block)
         require(heatmapOptions.cellGap >= 0f) { "heatmap.cellGap must be >= 0" }
     }
+
+    /** Configures value interpolation for compatible heatmap data replacements. */
+    fun dataTransition(block: DataTransitionOptions.() -> Unit) = dataTransitionOptions.applyValidated(block)
 
     /** Configures the chart-local entry reveal without animating its container. */
     fun entrance(block: EntranceOptions.() -> Unit) = EntranceOptions(entranceProgress).apply(block).also {
@@ -85,6 +97,9 @@ class RadarChartAttr : ComposeAttr() {
 
     /** Mutable options configured by [radar]. */
     val radarOptions = RadarOptions()
+
+    /** Mutable options configured by [dataTransition]. Disabled by default. */
+    val dataTransitionOptions = DataTransitionOptions()
 
     /**
      * Replaces the immutable radar series snapshot.
@@ -112,6 +127,11 @@ class RadarChartAttr : ComposeAttr() {
         series = value.toList()
     }
 
+    /** Replaces radar data using `data { series("Current") { metric("Speed", 86f) } }`. */
+    fun data(block: RadarDataScope.() -> Unit) {
+        data(*RadarDataScope().apply(block).build().toTypedArray())
+    }
+
     /** Configures the series legend. */
     fun legend(block: LegendOptions.() -> Unit) = legendOptions.apply(block)
 
@@ -123,7 +143,13 @@ class RadarChartAttr : ComposeAttr() {
         radarOptions.apply(block)
         require(radarOptions.gridCount in 2..10) { "radar.gridCount must be in 2..10" }
         require(radarOptions.lineWidth > 0f) { "radar.lineWidth must be > 0" }
+        require(radarOptions.maxValue == null || radarOptions.maxValue!!.isFinite() && radarOptions.maxValue!! > 0f) {
+            "radar.maxValue must be finite and > 0"
+        }
     }
+
+    /** Configures value interpolation for compatible radar data replacements. */
+    fun dataTransition(block: DataTransitionOptions.() -> Unit) = dataTransitionOptions.applyValidated(block)
 
     /** Configures the chart-local entry reveal without animating its container. */
     fun entrance(block: EntranceOptions.() -> Unit) = EntranceOptions(entranceProgress).apply(block).also {
@@ -161,6 +187,12 @@ class RadarChartEvent : ComposeEvent() {
 class HeatmapChartView : ComposeView<HeatmapChartAttr, HeatmapChartEvent>() {
     private var selectionState: ChartSelectionState<ChartSelection<HeatmapEntry>> by observable(ChartSelectionState())
     private var renderedCells: List<RenderedHeatmapCell> = emptyList()
+    private var dataTransitionProgress: Float by observable(1f)
+    private val dataTransition = ChartSnapshotTransition(
+        compatible = ChartDataTransition::heatmapCompatible,
+        interpolate = ChartDataTransition::interpolateHeatmap,
+    )
+    private val dataTransitionAnimation = ChartFrameAnimation()
 
     override fun createAttr() = HeatmapChartAttr()
     override fun createEvent() = HeatmapChartEvent()
@@ -178,15 +210,40 @@ class HeatmapChartView : ComposeView<HeatmapChartAttr, HeatmapChartEvent>() {
                     }
                 }
             }) { context, width, height ->
+                val entries = chart.resolveDataTransition(chart.attr.entries)
                 chart.renderedCells = P2ChartCanvasPainter.drawHeatmap(
                     context = context,
                     width = width,
                     height = height,
                     attr = chart.attr,
+                    entries = entries,
                     selected = chart.selectionState.selection,
                 )
             }
         }
+    }
+
+    private fun resolveDataTransition(source: List<HeatmapEntry>): List<HeatmapEntry> = dataTransition.resolve(
+        next = source,
+        enabled = attr.dataTransitionOptions.enabled,
+        progress = dataTransitionProgress,
+        onStart = {
+            dataTransitionProgress = 0f
+            startDataTransition()
+        },
+        onCancel = dataTransitionAnimation::cancel,
+    )
+
+    private fun startDataTransition() {
+        dataTransitionAnimation.start((attr.dataTransitionOptions.durationMs / 16).coerceAtLeast(1), onFrame = { linear ->
+            dataTransitionProgress = 1f - (1f - linear) * (1f - linear)
+        }, onFinished = dataTransition::finish)
+    }
+
+    override fun viewDestroyed() {
+        dataTransitionAnimation.cancel()
+        dataTransition.clear()
+        super.viewDestroyed()
     }
 }
 
@@ -196,7 +253,13 @@ class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
     private var tracker: RadarTracker? by observable(null)
     private var renderedPoints: List<RenderedRadarPoint> = emptyList()
     private var layout: RadarLayout? = null
+    private var dataTransitionProgress: Float by observable(1f)
     private val trackerReturnAnimation = ChartFrameAnimation()
+    private val dataTransition = ChartSnapshotTransition(
+        compatible = ChartDataTransition::radarCompatible,
+        interpolate = ChartDataTransition::interpolateRadar,
+    )
+    private val dataTransitionAnimation = ChartFrameAnimation()
 
     override fun createAttr() = RadarChartAttr()
     override fun createEvent() = RadarChartEvent()
@@ -222,11 +285,13 @@ class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
                     }
                 }
             }) { context, width, height ->
+                val series = chart.resolveDataTransition(chart.attr.series)
                 val rendered = P2ChartCanvasPainter.drawRadar(
                     context = context,
                     width = width,
                     height = height,
                     attr = chart.attr,
+                    series = series,
                     selected = chart.selectionState.selection,
                     tracker = chart.tracker,
                 )
@@ -241,6 +306,24 @@ class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
         val previewValue = RadarTrackerProjection.previewValue(layout ?: return, selection, x, y) ?: return
         cancelTrackerReturn()
         updateTracker(RadarTracker(selection, previewValue))
+    }
+
+    private fun resolveDataTransition(source: List<ChartSeries<RadarEntry>>): List<ChartSeries<RadarEntry>> =
+        dataTransition.resolve(
+            next = source,
+            enabled = attr.dataTransitionOptions.enabled,
+            progress = dataTransitionProgress,
+            onStart = {
+                dataTransitionProgress = 0f
+                startDataTransition()
+            },
+            onCancel = dataTransitionAnimation::cancel,
+        )
+
+    private fun startDataTransition() {
+        dataTransitionAnimation.start((attr.dataTransitionOptions.durationMs / 16).coerceAtLeast(1), onFrame = { linear ->
+            dataTransitionProgress = 1f - (1f - linear) * (1f - linear)
+        }, onFinished = dataTransition::finish)
     }
 
     private fun updateTracker(x: Float, y: Float) {
@@ -283,6 +366,8 @@ class RadarChartView : ComposeView<RadarChartAttr, RadarChartEvent>() {
 
     override fun viewDestroyed() {
         cancelTrackerReturn()
+        dataTransitionAnimation.cancel()
+        dataTransition.clear()
         super.viewDestroyed()
     }
 }
@@ -348,10 +433,11 @@ private object P2ChartCanvasPainter {
         width: Float,
         height: Float,
         attr: HeatmapChartAttr,
+        entries: List<HeatmapEntry>,
         selected: ChartSelection<HeatmapEntry>?,
     ): List<RenderedHeatmapCell> {
         fillRect(context, ChartRect(0f, 0f, width, height), attr.theme.backgroundColor)
-        val validEntries = attr.entries.filter { it.value.isFinite() }
+        val validEntries = entries.filter { it.value.isFinite() }
         if (width <= 0f || height <= 0f || validEntries.isEmpty()) {
             drawEmpty(context, width, height, attr.theme)
             return emptyList()
@@ -372,7 +458,7 @@ private object P2ChartCanvasPainter {
         )
         val layout = HeatmapLayoutEngine.layout(
             plot = plot,
-            entries = attr.entries,
+            entries = entries,
             seriesName = attr.seriesName.ifBlank { "热度" },
             cellGap = attr.heatmapOptions.cellGap,
         )
@@ -434,25 +520,27 @@ private object P2ChartCanvasPainter {
         width: Float,
         height: Float,
         attr: RadarChartAttr,
+        series: List<ChartSeries<RadarEntry>>,
         selected: ChartSelection<RadarEntry>?,
         tracker: RadarTracker?,
     ): RadarRenderResult {
         fillRect(context, ChartRect(0f, 0f, width, height), attr.theme.backgroundColor)
-        if (width <= 0f || height <= 0f || attr.series.isEmpty()) {
+        if (width <= 0f || height <= 0f || series.isEmpty()) {
             drawEmpty(context, width, height, attr.theme)
             return RadarRenderResult(emptyList(), null)
         }
 
         context.font(LABEL_FONT_SIZE)
-        val labels = attr.series.firstOrNull { it.items.isNotEmpty() }?.items?.map { it.label }.orEmpty()
+        val labels = series.firstOrNull { it.items.isNotEmpty() }?.items?.map { it.label }.orEmpty()
         val maxLabelWidth = labels.maxOfOrNull { context.measureText(it).width } ?: 0f
         val layout = RadarLayoutEngine.layout(
             width = width,
             height = height,
-            series = attr.series,
+            series = series,
             gridCount = attr.radarOptions.gridCount,
             labelInset = (maxLabelWidth / 2f + 14f).coerceAtLeast(28f),
             legendVisible = attr.legendOptions.visible,
+            maxValue = attr.radarOptions.maxValue,
         )
         val renderedPoints = layout.series.flatMap { it.points }
         if (layout.axes.isEmpty() || renderedPoints.isEmpty()) {
@@ -466,7 +554,7 @@ private object P2ChartCanvasPainter {
         val gridProgress = (attr.entranceProgress.coerceIn(0f, 1f) / 0.45f).coerceIn(0f, 1f)
         val shapeProgress = ((attr.entranceProgress.coerceIn(0f, 1f) - 0.2f) / 0.8f).coerceIn(0f, 1f)
 
-        if (attr.legendOptions.visible) drawLegend(context, attr.series, attr.theme, width)
+        if (attr.legendOptions.visible) drawLegend(context, series, attr.theme, width)
         drawRadarGrid(context, layout, attr.theme, gridProgress)
         drawRadarLabels(context, layout, attr.theme)
 
@@ -475,7 +563,7 @@ private object P2ChartCanvasPainter {
                 points = scaleRadarPoints(renderedSeries.points, layout, shapeProgress),
                 segments = renderedSeries.segments.map { segment -> scaleRadarPoints(segment, layout, shapeProgress) },
             )
-            val sourceSeries = attr.series[seriesIndex]
+            val sourceSeries = series[seriesIndex]
             val color = sourceSeries.color ?: attr.theme.palette[seriesIndex % attr.theme.palette.size]
             val fillColor = attr.radarOptions.fillColors.getOrNull(seriesIndex)
             if (fillColor != null && animatedSeries.closesPolygon) {

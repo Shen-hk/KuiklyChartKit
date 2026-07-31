@@ -155,6 +155,7 @@ internal object RadarLayoutEngine {
         gridCount: Int,
         labelInset: Float,
         legendVisible: Boolean,
+        maxValue: Float? = null,
     ): RadarLayout {
         val fallbackScale = NiceScale.fromValues(emptyList(), tickCount = 5, includeZero = true)
         val dimensionSource = series.firstOrNull { it.items.isNotEmpty() } ?: return emptyLayout(fallbackScale, gridCount)
@@ -175,6 +176,7 @@ internal object RadarLayoutEngine {
             values,
             tickCount = (gridCount + 1).coerceIn(2, 10),
             includeZero = true,
+            maxValue = maxValue,
         )
         // A radial metric always starts at the center. NiceScale expands equal
         // zero values around zero, so normalize that special domain back to 0.

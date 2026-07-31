@@ -119,6 +119,17 @@ data class ChartViewport(
     val itemCount: Int get() = endIndex - startIndex + 1
 }
 
+/** Inclusive original item-index range selected by an opt-in Cartesian brush. */
+data class ChartBrushSelection(
+    val startIndex: Int,
+    val endIndex: Int,
+) {
+    init {
+        require(startIndex >= 0) { "ChartBrushSelection.startIndex must be >= 0" }
+        require(endIndex >= startIndex) { "ChartBrushSelection.endIndex must be >= startIndex" }
+    }
+}
+
 /** Bar grouping policy reserved by the public M0 DSL. */
 enum class BarMode {
     /** Accepts at most one series and rejects ambiguous multi-series input. */
@@ -270,6 +281,22 @@ class TooltipOptions {
 
     /** Formats [value] with [valueFormatter] or ChartKit's compact default. */
     fun format(value: Float): String = valueFormatter?.invoke(value) ?: formatChartValue(value)
+}
+
+/** Optional tracker crosshair. Disabled by default to preserve existing tracker visuals. */
+class CrosshairOptions {
+    /** Draws a horizontal guide through the tracker anchor in addition to its vertical guide. */
+    var enabled: Boolean = false
+    /** Whether the horizontal guide is shown while [enabled] is true. */
+    var showHorizontalGuide: Boolean = true
+}
+
+/** Opt-in range brush settings. Disabled by default and exclusive with the long-press tracker. */
+class BrushOptions {
+    /** Enables long-press drag selection inside the Cartesian plot area. */
+    var enabled: Boolean = false
+    /** Applies the selected original-index range as the viewport when the brush is released. */
+    var zoomToSelectionOnRelease: Boolean = false
 }
 
 /** Opt-in dense Cartesian browsing options. A zero [visibleItemCount] means all items are visible. */

@@ -60,6 +60,9 @@ class RadarOptions {
     /** Stroke width for every radar series in logical pixels. */
     var lineWidth: Float = 2f
 
+    /** Optional fixed radial maximum used to keep comparable updates on one scale. */
+    var maxValue: Float? = null
+
     /**
      * Enables long-press tracking for radar vertices. Dragging projects the
      * active point onto its radial axis and previews the matching polygon area.

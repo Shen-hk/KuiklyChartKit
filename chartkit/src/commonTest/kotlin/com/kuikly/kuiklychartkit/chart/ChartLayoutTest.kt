@@ -97,6 +97,36 @@ class ChartLayoutEngineTest {
     }
 
     @Test
+    fun barAndMixedLayoutsHonorExplicitYAxisBounds() {
+        val bars = ChartLayoutEngine.bar(
+            width = 300f,
+            height = 220f,
+            series = listOf(ChartSeries("A", listOf(BarEntry("one", 40f)))),
+            margins = ChartMargins(),
+            tickCount = 5,
+            includeZero = true,
+            yMin = 0f,
+            yMax = 200f,
+        )
+        val mixed = ChartLayoutEngine.mixed(
+            width = 300f,
+            height = 220f,
+            barSeries = listOf(ChartSeries("actual", listOf(BarEntry("one", 40f)))),
+            lineSeries = listOf(ChartSeries("target", listOf(BarEntry("one", 80f)))),
+            margins = ChartMargins(),
+            tickCount = 5,
+            includeZero = true,
+            yMin = 0f,
+            yMax = 200f,
+        )
+
+        assertEquals(0f, bars.yScale.min)
+        assertEquals(200f, bars.yScale.max)
+        assertEquals(0f, mixed.yScale.min)
+        assertEquals(200f, mixed.yScale.max)
+    }
+
+    @Test
     fun viewportDefaultsToTheLatestWindowAndClampsPanAtBothEnds() {
         val initial = LineViewportController.resolve(
             itemCount = 10,
@@ -566,5 +596,25 @@ class ChartDslValidationTest {
 
         assertTrue(minimum.message.orEmpty().contains("interaction.minVisibleItemCount"))
         assertTrue(maximum.message.orEmpty().contains("interaction.maxVisibleItemCount"))
+    }
+
+    @Test
+    fun crosshairAndBrushAreOptInAndKeepExistingTrackerDefaults() {
+        val attr = LineChartAttr()
+
+        assertFalse(attr.crosshairOptions.enabled)
+        assertTrue(attr.crosshairOptions.showHorizontalGuide)
+        assertFalse(attr.brushOptions.enabled)
+        assertFalse(attr.brushOptions.zoomToSelectionOnRelease)
+
+        attr.crosshair { enabled = true }
+        attr.brush {
+            enabled = true
+            zoomToSelectionOnRelease = true
+        }
+
+        assertTrue(attr.crosshairOptions.enabled)
+        assertTrue(attr.brushOptions.enabled)
+        assertTrue(attr.brushOptions.zoomToSelectionOnRelease)
     }
 }

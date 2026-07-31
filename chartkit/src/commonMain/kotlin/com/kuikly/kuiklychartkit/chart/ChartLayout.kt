@@ -158,6 +158,8 @@ internal object ChartLayoutEngine {
         margins: ChartMargins,
         tickCount: Int,
         includeZero: Boolean,
+        yMin: Float? = null,
+        yMax: Float? = null,
     ): BarChartLayout {
         val categoryCount = series.maxOfOrNull { it.items.size } ?: 0
         return BarChartLayout(
@@ -166,6 +168,8 @@ internal object ChartLayoutEngine {
                 series.flatMap { it.items }.map { it.value },
                 tickCount,
                 includeZero = includeZero,
+                minValue = yMin,
+                maxValue = yMax,
             ),
             categoryCount = categoryCount,
         )
@@ -179,6 +183,8 @@ internal object ChartLayoutEngine {
         margins: ChartMargins,
         tickCount: Int,
         includeZero: Boolean,
+        yMin: Float? = null,
+        yMax: Float? = null,
     ): BarChartLayout = bar(
         width = width,
         height = height,
@@ -186,6 +192,8 @@ internal object ChartLayoutEngine {
         margins = margins,
         tickCount = tickCount,
         includeZero = includeZero,
+        yMin = yMin,
+        yMax = yMax,
     )
 
     private fun plotRect(width: Float, height: Float, margins: ChartMargins): ChartRect {
