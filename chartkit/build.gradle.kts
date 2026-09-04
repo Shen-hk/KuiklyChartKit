@@ -11,6 +11,7 @@ plugins {
 }
 
 val KEY_PAGE_NAME = "pageName"
+val generateKuiklyEntry = project.findProperty("chartkitGenerateKuiklyEntry")?.toString()?.toBoolean() == true
 
 kotlin {
     androidTarget {
@@ -110,8 +111,10 @@ publishing {
     }
 }
 
-ksp {
-    arg(KEY_PAGE_NAME, getPageName())
+if (generateKuiklyEntry) {
+    ksp {
+        arg(KEY_PAGE_NAME, getPageName())
+    }
 }
 
 // Kuikly 2.7 also adds its processor to the deprecated global `ksp` configuration.
@@ -122,12 +125,14 @@ configurations.named("ksp") {
 }
 
 dependencies {
-    compileOnly("com.tencent.kuikly-open:core-ksp:${Version.getKuiklyVersion()}") {
-        add("kspAndroid", this)
-        add("kspIosArm64", this)
-        add("kspIosX64", this)
-        add("kspIosSimulatorArm64", this)
-        add("kspJs", this)
+    if (generateKuiklyEntry) {
+        compileOnly("com.tencent.kuikly-open:core-ksp:${Version.getKuiklyVersion()}") {
+            add("kspAndroid", this)
+            add("kspIosArm64", this)
+            add("kspIosX64", this)
+            add("kspIosSimulatorArm64", this)
+            add("kspJs", this)
+        }
     }
 }
 
